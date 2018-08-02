@@ -1,0 +1,25 @@
+Dear all,
+
+following the telecom, please find attached the file with the current (and very preliminary) version of the code that I am working on for the WG11 homogenisation.
+
+This is an R script. If you have the needed libraries installed, change the paths, and have the WG11 node files from iDR5, it should run, I think. (there is a second file with 2 functions needed to read the data out of the FITS files).
+
+Anyway, this is for you to have an idea of how I am approaching the problem of estimating biases and the covariance matrix out of the Node results using the benchmarks. For testing, I am using only the Teff values.
+
+Again, this is work in progress. As it is implemented now, the model does NOT give good results. I am testing different options to improve things.
+
+The script has extensive comments. But let me know if something is not clear (and specially if you spot an error or have suggestions of improvements).
+
+I have ideas of potential changes, but I am checking if they make sense (and if I can really implement them, because sometimes is not that obvious before I actually try...):
+
+(these ideas will perhaps make more sense after you see and understand the script)
+
+*) For the purposes of testing, the bias function is implemented as quadratic function of Teff. This does NOT fit well the biases actually. This can be changed for something else, including also dependencies on logg and [Fe/H] if needed (and if the data allows, because it increases the number of free parameters...)
+
+*) Currently I am modelling the measurements with a multivariate normal distribution. This might not be the best choice if some measurements can be considered outliers. In principle it should be possible to use a multi variate t distribution instead. This could account for "heavier tails" (the outliers) in the distribution. But this adds one more free parameter and changes a few other things.
+
+*) For now, the model estimates one value for the "stochastic error" in Teff for a given node (i.e., it might find that NodeA has a general error in Teff of \pm 300 K). This is per itself not very useful. This stochastic error should also be parametrized as a function of something (the parameters or SNR, for example). This is what I am working on right now, but I am running into problems when inverting the matrices.
+
+Cheers,
+R.
+
