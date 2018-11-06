@@ -1,0 +1,71 @@
+Tracking the Bias:
+See:
+test_a3_dnorm.R
+test_a3_dnorm_normalised.R
+test_a3_dunif_normalised.R
+
+1/ From RS, using dnorm for alpha3 (test_a3_dnorm.R)
+-> This resulted in there being effectively straight lines at 0.0. No curvature etc.
+
+2.1/ Updated code to minus all TEFFS by the mean BM TEff and then scale by std BM TEFF  (test_a3_dnorm_normalised.R)
+sd.of.alpha1 = 1
+sd.of.alpha2 = 0.003
+sd.of.alpha3 = 0.001
+-> No curvature
+
+
+2.2/ Updated priors on alphas to get range that covers coefficients of direct linear fit to Lumba, OACT, EPINARBO
+sd.of.alpha1 = 0.1         #0.1        #400  1.0E-6  #
+sd.of.alpha2 = 1     #1   1.0E-6  #
+sd.of.alpha3 = 0.1     #1E-4
+-> A bit of curvature for Lumba but not as would like. AC and psrf are good, but I"m not convinced.
+
+3/ Replace a3 prior distribution with dunif as per online example.
+BM and observed ARE minus mean(BM) and divided by std(BM)
+a/ true_bench... ~ dnorm(5300,pow(800,-2))
+b/ NAN are replaced by BM value, NOT (BM value-mean(BM))/std(BM)
+c/ Error on BM is NOT scaled by SD(BM)
+d/ Prior.matrix initial sigma = 100 (typical for TEFF)
+sd.of.alpha1 = 1.0E-6  #0.1         #0.1        #400  1.0E-6  #
+sd.of.alpha2 = 1.0E-6  #1     #1   1.0E-6  #
+alpha3, dunif -1, -0.01  (in jags and in intital) dunif(-1, -0.01)
+
+-> curvature but now too much!
+
+3.1/ make error on BM scaled by STD(BM) (c/)
+-> still curved as above so okay
+
+3.2/ replace NaNs by normalised BM values (b/)
+-> still curved as above so okay
+
+3.3/ use dnorm minus by mean and scaled by STD(BM)
+true_bench... ~ dnorm(0,pow(1,-2))
+-> still curved as above so okay
+
+3.4.1/ Prior.matrix initial sigma = 100
+Divide by std(BM) = (100/STD(BM))^2
+> curve improved for EPINARBO
+> got correlations between the nodes
+         Lumba  OACT EPINARBO
+Lumba     1.00 -0.65    -0.26
+OACT     -0.65  1.00    -0.24
+EPINARBO -0.26 -0.24     1.00
+-> this is the initial estimate for 'tau'
+
+3.4.2/ set intial inv.cov matrix to equal above prior.matrix
+-> didn't change anythign from 3.4.1
+
+3.4.3/ alter starting prior.matrix
+use rgamma function that was used for initial inv.cov before 3.4.2
+-> didn't change anything from 3.4.2
+
+3.4.4/ alter starting values in prior matrix
+100^2 = too curve for EPIANRBO -> 10000
+(100/STD(BM))^2 = still a bit too curved but a bit better -> 0.01303547
+(Put 1/num.nodes in front makes tau smaller but doesn't improve the curvature)
+
+3.4.5/
+
+
+**** RS has figured another way so start on that.
+

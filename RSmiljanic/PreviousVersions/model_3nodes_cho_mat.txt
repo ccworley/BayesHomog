@@ -1,0 +1,131 @@
+model.teff.matrix.bias <- "model{
+# We set up the model to use multivariate normal distributions. For a given spectrum of the benchmarks, the vector of Teff measured by the nodes teff.nodes.vector = (Teff1, Teff2,...,Teffn) is a random drawing from a multivariate normal distribution with a mean = vector of true.teff of that benchmark (true.teff, true.teff,...,true.teff) - where obviously the true.teff is the same irrespective of node - and there is a covariance matrix (JAGS expects the inverse covariance matrix actually): teff.nodes.vector ~ dmnorm ( mu = true.teff.vector, InvCovMatrix ). So we need to first set up all vectors accordingly.
+
+# 1)
+# This first part is to define the vector with TRUE values of the benchmark Teff
+# We do not use the given Teff value directly, but use the given value as a prior for the true value
+
+# Prior on the true Teff of the benchmarks
+for (i in 1:N) { # Running over N which is the num.bench
+
+    the.true.teff.bench[i] ~ dnorm(given.teff.benchmarks[i], given.tau.teff.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+    given.tau.teff.bench[i] <- pow(given.error.teff.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+}
+
+# Now we will create the vector of true Teffs: vector.true.teff = (true.teff, ..., true.teff)
+# Here we have to remember that we use directly true.teff only when the node provided a measurement. If the value was missing, we actually use a broad non-informative prior to simulate that the value of the node measurement was unknown. This means that the actual vector.true.teffs is not one per benchmark, but one per spectrum! Because for each spectrum there is a different number of node values missing.
+
+# true.teff.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
+
+for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
+
+    true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff.bench[code.bench.not.missing[i]]
+
+}
+
+#Prior on the missing values
+
+for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
+
+    true.teff.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(3000,8000) #dnorm(offset.teff,scale.teff) I(3000,8000)
+
+}
+
+# Prior on the teff.InvCovMat
+
+#teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
+
+# Other Priors needed for coefficients
+# Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
+#for (i in 1:2) { # For missing and non-missing values
+    for (l in 1:K) {       # On number of nodes
+       for (m in 1:P) {    # On number of setups
+          for (j in 1:3) { # 3 coefficients needed for fitting a quadratic function
+              alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
+           }
+        }
+    }
+#}
+
+# I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
+
+for (i in 1:M) {
+   for (j in 1:K) {
+        only.the.true.teff.benchmark[i,j] <- (given.teff.benchmarks[star.code[i]]-offset.teff)/scale.teff
+       #only.the.true.teff.benchmark[i,j] <- the.true.teff.bench[star.code[i]]
+   }
+}
+
+
+# Prior for the cholesky factor matrix
+
+cholesky.mat[1,1] <- 1                     # the c_11 term is always = 1
+for (i in 2:K) {
+    cholesky.mat[i,1] ~ dunif(-1.0,1.0)    # the c_i1 terms are random correlation coefficients
+    cholesky.mat[1,i] <- 0
+}
+
+cholesky.mat[2,2] <- pow((1-pow(cholesky.mat[2,1],2)),1/2)  #c_22 is defined as a function of c_21
+
+cholesky.mat[2,3] <- 0 # c_23 is always 0
+
+upper.bound[3,2] <- cholesky.mat[3,1] * cholesky.mat[2,1] + pow(((pow(cholesky.mat[3,1],2)-1)*(pow(cholesky.mat[2,1],2)-1)),1/2)
+lower.bound[3,2] <- cholesky.mat[3,1] * cholesky.mat[2,1] - pow(((pow(cholesky.mat[3,1],2)-1)*(pow(cholesky.mat[2,1],2)-1)),1/2)
+prior.rho[3,2] ~ dunif(lower.bound[3,2],upper.bound[3,2])
+
+cholesky.mat[3,2] <- pow(cholesky.mat[2,2],-1) * (prior.rho[3,2] - (cholesky.mat[3,1]*cholesky.mat[2,1])) # c_32 includes the rho_32 which is random but with bounds that depend on c_21 and c_31, plus it also depends on c_22
+
+cholesky.mat[3,3] <- pow((1-(pow(cholesky.mat[3,1],2)+pow(cholesky.mat[3,2],2))),1/2) # c_33 is a function of c_31 and c_32
+
+
+#Prior on the beta coefficients
+for (i in 1:K) {
+    beta1[i] ~ dgamma(1,1E-6)
+    beta2[i] ~ dnorm(0,pow(100,-2)) I(0,)
+    beta3[i] ~ dnorm(0,pow(100,-2)) I(0,)
+}
+
+
+# 2)
+# Now, we finally write that what the nodes give is a noisy measurement of the true.teff.benchmark
+
+#Likelihood - per spectrum (vectorized over K = num.nodes)
+
+for (j in 1:M) {
+    observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[j,1:K,1:K] )
+     
+    norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2)
+
+   node.var[j,1:K] <- beta1[1:K]*pow(exp(1),(pow(snr.spec.vec[j,1:K],-1)*beta2[1:K])) + beta3[1:K]
+   #node.var[j,1:K] <- beta1[1:K]*pow(snr.spec.vec[j,1:K],-1) + pow(beta2[1:K],2)
+   node.random[j,1:K] <- pow(node.var[j,1:K],1/2)
+
+for (i in 1:K) {
+    for (l in 1:K) {
+         New.Mat[j,i,l] <- node.random[j,i]*cholesky.mat[i,l]
+    }
+}
+
+teff.CovMat[j,1:K,1:K] <- New.Mat[j,1:K,1:K] %*% t(New.Mat[j,1:K,1:K])
+teff.InvCovMat[j,1:K,1:K] <- inverse(teff.CovMat[j,1:K,1:K])
+
+}
+
+# Notice what was done with the bias function above. Let's assume, for example, that I know that everytime I measure the Teff of the Sun, my value comes out with a bias of +50 K. I could write that my measurement minus the bias was drawn from the normal distribution: (my.measurement - 50 K) ~ dnorm(mu = 5777 K, sigma = my.random.error). What I am assuming is that this is equivalent to say that I am instead drawing from a normal distribution with mu = 5827 K (5777 + 50): my.measurement ~ dnorm(mu = 5827 K + my.bias , sigma = my.random.error)
+
+# 3)
+# This is extra. Since the quantities I know how to understand are the sigmas and correlations out of the Covariance Matrix:
+# Convert teff.invCovMat to node.sd and correlations:
+
+#  teff.CovMat <- inverse( teff.InvCovMat )
+#  for ( varIdx in 1:K ) {
+#      node.sd.teff[varIdx] <- sqrt(teff.CovMat[varIdx,varIdx])
+#   }
+#  for ( varIdx1 in 1:K ) {
+#       for ( varIdx2 in 1:K ) {
+#           teff.Rho[varIdx1,varIdx2] <- ( teff.CovMat[varIdx1,varIdx2] / (node.sd.teff[varIdx1]*node.sd.teff[varIdx2]) )
+#  }
+#}
+
+}"

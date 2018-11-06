@@ -15,19 +15,38 @@ source('load_input.R')
 #Define node file paths etc
 print(node.files.path)
 release <- c('iDR6')
-list.nodes <- c('Lumba','OACT','EPINARBO')  #,'IAC')  #,'MaxPlanck')
+# Restrict to one setup for the moment
+anasetup = "HR10"
+if (length(grep("HR15N",anasetup)) > 0) {
+  list.nodes <- c('Lumba','OACT','EPINARBO','MaxPlanck')
+} else if (length(grep("HR9",anasetup)) > 0) {
+  list.nodes <- c('OACT','EPINARBO')
+} else if (length(grep("HR10|HR21",anasetup)) > 0) {
+  list.nodes <- c('Lumba','IAC')
+} else if (length(grep("HR10",anasetup)) > 0) {
+  list.nodes <- c('IAC','MaxPlanck')
+}
 
 #Call load node files function and create common matrix (RS code)
 #out.list <- load.nodes(list.nodes,release,node.files.path) # Reads the node files and outputs a list that is broken into 3 below:
 nodes.param <- out.list[[2]]              # Array (nrow = num.stars, ncol = num.nodes, n.third = parameters [TEFF, E_TEFF, LOGG, E_LOGG, FEH, E_FEH, XI, E_XI] )
 nodes.ids <- as.data.frame(out.list[[1]]) # The metadata associated to nodes.param (nrow = numstars, ncol = it varies; includes cnames, setup, snr, etc)
 nodes.flags <-  out.list[[3]]             # Array (nrow = num.stars, ncol = num.nodes, n.third = flag) where flag = PECULI, REMARK, TECH in that order
+
+#Reduce to nodes that anlaysed this setup
+nodes.param <- nodes.param[,list.nodes,]             # Array (nrow = num.stars, ncol = num.nodes, n.third = parameters [TEFF, E_TEFF, LOGG, E_LOGG, FEH, E_FEH, XI, E_XI] )
+nodes.flags <- nodes.flags[,list.nodes,]             # Array (nrow = num.stars, ncol = num.nodes, n.third = flag) where flag = PECULI, REMARK, TECH in that order
+
+#Extract the rows that are benchmarks only
+#filter.bench <- (nodes.param$GES_FLD %in% nodes.ids$GES_FLD)
+#bench.param <- bench.param[filter.bench,]
+
 #rm(out.list,release)
 
 #Plot node teff
-lteff <- nodes.param[,"Lumba","TEFF"]
-oteff <- nodes.param[,"OACT","TEFF"]
-eteff <- nodes.param[,"EPINARBO","TEFF"]
+#lteff <- nodes.param[,"Lumba","TEFF"]
+#oteff <- nodes.param[,"OACT","TEFF"]
+#eteff <- nodes.param[,"EPINARBO","TEFF"]
 #icteff <- nodes.param[,"IAC","TEFF"]
 #plot(lteff,eteff,type="p")
 #plot(lteff,oteff,type="p")
@@ -58,8 +77,6 @@ bench.param <- bench.param[filter.bench,]
 print(dim(bench.param))
 
 # From the Node results, select all and only entries of the benchmarks
-# Restrict to one setup for the moment
-anasetup = "HR15N"
 print(dim(nodes.ids))
 #filter.bench <- (nodes.ids$GES_FLD %in% bench.param$GES_FLD)  #All setups
 filter.bench <- (nodes.ids$GES_FLD %in% bench.param$GES_FLD & nodes.ids$SETUP %in% anasetup)
@@ -86,10 +103,18 @@ snr.spec.vec <- matrix(rep(snr.spec,num.nodes),ncol=num.nodes,nrow=length(snr.sp
 # 3) Create the vectors with the given reference parameters
 given.teff.bench <- bench.param$TEFF
 given.sigma.teff.bench <- bench.param$E_TEFF
+given.logg.bench <- bench.param$LOGG
+given.sigma.logg.bench <- bench.param$E_LOGG
+given.feh.bench <- bench.param$FEH
+given.sigma.feh.bench <- bench.param$E_FEH
 
 #Normalise the BM?
 mean.bench.teff <- mean(given.teff.bench, na.rm=TRUE)
 sd.bench.teff <- sd(given.teff.bench, na.rm=TRUE)
+mean.bench.logg <- mean(given.logg.bench, na.rm=TRUE)
+sd.bench.logg <- sd(given.logg.bench, na.rm=TRUE)
+mean.bench.feh <- mean(given.feh.bench, na.rm=TRUE)
+sd.bench.feh <- sd(given.feh.bench, na.rm=TRUE)
 
 #unnormalised.given.teff.bench <- given.teff.bench
 #unnormalised.given.sigma.teff.bench <- given.sigma.teff.bench
@@ -98,10 +123,15 @@ sd.bench.teff <- sd(given.teff.bench, na.rm=TRUE)
 
 # 4) The measurements from the nodes
 observed.node.teff.spectrum <- matrix(NA,ncol=ncol(node.measured.param.bench),nrow=nrow(node.measured.param.bench))
+observed.node.logg.spectrum <- matrix(NA,ncol=ncol(node.measured.param.bench),nrow=nrow(node.measured.param.bench))
+observed.node.feh.spectrum <- matrix(NA,ncol=ncol(node.measured.param.bench),nrow=nrow(node.measured.param.bench))
 for (ik in seq(1,ncol(observed.node.teff.spectrum))) {
   #print(as.numeric(as.vector(node.measured.param.bench[,ik,'TEFF'])))
   #print(trunc(as.numeric(as.vector(node.measured.param.bench[,ik,'TEFF']))))
   observed.node.teff.spectrum[,ik] <- trunc(as.numeric(as.vector(node.measured.param.bench[,ik,'TEFF']))) # To be sure they are numbers
+  observed.node.logg.spectrum[,ik] <- trunc(as.numeric(as.vector(node.measured.param.bench[,ik,'LOGG']))*100)/100 # To be sure they are numbers
+  #For Nice and IAC feh<-mh - code up!!!
+  observed.node.feh.spectrum[,ik] <- trunc(as.numeric(as.vector(node.measured.param.bench[,ik,'FEH']))*100)/100 # To be sure they are numbers
 }
 
 ##Normalise the node TEFFs by the mean and std of all the node TEFFS
@@ -125,6 +155,8 @@ for (ik in seq(1,nrow(observed.node.teff.spectrum))) {
 # This is the new matrix without missing values, where the NAs and NaNs where substituted by 
 #the reference benchmak values
 manipulated.node.teff.spectrum <- matrix(NA,ncol=ncol(observed.node.teff.spectrum),nrow=nrow(observed.node.teff.spectrum))
+manipulated.node.logg.spectrum <- matrix(NA,ncol=ncol(observed.node.teff.spectrum),nrow=nrow(observed.node.teff.spectrum))
+manipulated.node.feh.spectrum <- matrix(NA,ncol=ncol(observed.node.teff.spectrum),nrow=nrow(observed.node.teff.spectrum))
 
 # And I also need to save the position (i,j) in the matrix of each element that was changed 
 #from NA to a value, those that were not changed, and the star.code of the changed values.
@@ -143,13 +175,38 @@ for (i in seq(1,nrow(observed.node.teff.spectrum))) {
     #if (is.na(unnormalised.observed.node.teff.spectrum[i,j])) {    #If NaN in observed
     if (is.na(observed.node.teff.spectrum[i,j])) {    #If NaN in observed
       manipulated.node.teff.spectrum[i,j] <- bench.param$TEFF[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+      manipulated.node.logg.spectrum[i,j] <- bench.param$LOGG[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+      manipulated.node.feh.spectrum[i,j] <- bench.param$FEH[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
       #observed.node.teff.spectrum[i,j] <- unnormalised.observed.node.teff.spectrum[i,j] #fills in NaN to match
       i.of.missing.teff[ik] <- i
       j.of.missing.teff[ik] <- j
       code.bench.missing[ik] <- star.code[i]
       ik <- ik+1
+      
+    } else if (is.na(observed.node.logg.spectrum[i,j])) {    #If NaN in observed
+        manipulated.node.teff.spectrum[i,j] <- bench.param$TEFF[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+        manipulated.node.logg.spectrum[i,j] <- bench.param$LOGG[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+        manipulated.node.feh.spectrum[i,j] <- bench.param$FEH[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+        #observed.node.teff.spectrum[i,j] <- unnormalised.observed.node.teff.spectrum[i,j] #fills in NaN to match
+        i.of.missing.teff[ik] <- i
+        j.of.missing.teff[ik] <- j
+        code.bench.missing[ik] <- star.code[i]
+        ik <- ik+1
+
+    } else if (is.na(observed.node.feh.spectrum[i,j])) {    #If NaN in observed
+      manipulated.node.teff.spectrum[i,j] <- bench.param$TEFF[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+      manipulated.node.logg.spectrum[i,j] <- bench.param$LOGG[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+      manipulated.node.feh.spectrum[i,j] <- bench.param$FEH[star.code[i]]#-mean.bm.teff)/(sd.bm.teff) 
+      #observed.node.teff.spectrum[i,j] <- unnormalised.observed.node.teff.spectrum[i,j] #fills in NaN to match
+      i.of.missing.teff[ik] <- i
+      j.of.missing.teff[ik] <- j
+      code.bench.missing[ik] <- star.code[i]
+      ik <- ik+1
+      
     } else {
       manipulated.node.teff.spectrum[i,j] <- observed.node.teff.spectrum[i,j]
+      manipulated.node.logg.spectrum[i,j] <- observed.node.logg.spectrum[i,j]
+      manipulated.node.feh.spectrum[i,j] <- observed.node.feh.spectrum[i,j]
       i.not.missing.teff[jk] <- i
       j.not.missing.teff[jk] <- j
       code.bench.not.missing[jk] <- star.code[i]
@@ -195,12 +252,19 @@ num.setups <- length(setups.used) # Total number of setups
 #sd.of.alpha1 = 0.1  #1      #400  1.0E-6  #
 #sd.of.alpha2 = 0.1  #0.0003  #1   1.0E-6  #
 #sd.of.alpha3 = 0.008  #0.001  #1E-4
+ncoeff <- 6  #6
 
 
 # Now, let's create the data list needed to run the model
 teff.data <- list(given.teff.benchmarks = given.teff.bench,                       # Benchmark Teff
                   given.error.teff.benchmarks = given.sigma.teff.bench,          # Benchmark e_Teff
                   observed.node.teff.per.spec = manipulated.node.teff.spectrum,  # Node Teff
+                  given.logg.benchmarks = given.logg.bench,                       # Benchmark Teff
+                  given.error.logg.benchmarks = given.sigma.logg.bench,          # Benchmark e_Teff
+                  observed.node.logg.per.spec = manipulated.node.logg.spectrum,  # Node Teff
+                  given.feh.benchmarks = given.teff.bench,                       # Benchmark Teff
+                  given.error.feh.benchmarks = given.sigma.feh.bench,          # Benchmark e_Teff
+                  observed.node.feh.per.spec = manipulated.node.feh.spectrum,  # Node Teff
                   star.code = star.code,   # To trace to which benchmark each line of teff.by.node corresponds to
                   #                  snr.spec.vec = snr.spec.vec, # SNR
                   K = num.nodes,           #N.nodes,
@@ -220,6 +284,11 @@ teff.data <- list(given.teff.benchmarks = given.teff.bench,                     
                   #For normalizing Teff values and estimating biases
                   offset.teff = mean.bench.teff,
                   scale.teff = sd.bench.teff,
+                  offset.logg = mean.bench.logg,
+                  scale.logg = sd.bench.logg,
+                  offset.feh = mean.bench.feh,
+                  scale.feh = sd.bench.feh,
+                  ncoeff = ncoeff,
                   #For wishart (dwish) prior on inverse covariance matrix:
                   prior.matrix = prior.matrix,
                   prior.deg.freedom = prior.deg.freedom  #,
@@ -260,6 +329,12 @@ for (i in 1:N) { # Running over N which is the num.bench
 the.true.teff.bench[i] ~ dnorm(given.teff.benchmarks[i], given.tau.teff.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
 given.tau.teff.bench[i] <- pow(given.error.teff.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
 
+the.true.logg.bench[i] ~ dnorm(given.logg.benchmarks[i], given.tau.logg.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+given.tau.logg.bench[i] <- pow(given.error.logg.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+#the.true.feh.bench[i] ~ dnorm(given.feh.benchmarks[i], given.tau.feh.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+#given.tau.feh.bench[i] <- pow(given.error.feh.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
 }
 
 # Now we will create the vector of true Teffs: vector.true.teff = (true.teff, ..., true.teff)
@@ -275,6 +350,7 @@ given.tau.teff.bench[i] <- pow(given.error.teff.benchmarks[i],-2)               
 for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
 
 true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff.bench[code.bench.not.missing[i]]
+true.logg.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.logg.bench[code.bench.not.missing[i]]
 
 }
 
@@ -283,6 +359,7 @@ true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff
 for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from normal about BM mean and tau=1/sd^2  #the broad prior
 
 true.teff.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(3000,8000)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+true.logg.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(0,6)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
 
 }
 
@@ -291,12 +368,11 @@ teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
 
 # *) Prior for the coefficients of the bias fitting. Now that we are using normalized Teff values to compute the bias, there is no problem with choosing the prior for these alpha coefficients
 
-
 # Other Priors needed for coefficients
 # Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
 for (l in 1:K) {       # On number of nodes
   for (m in 1:P) {    # On number of setups
-    for (j in 1:3) { # 3 coefficients needed for fitting a quadratic function
+    for (j in 1:ncoeff) { # ncoeff coefficients needed for fitting a quadratic function
       alpha[j,l,m] ~ dnorm(0,pow(0.1,-2))    # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
     }
   }
@@ -309,6 +385,7 @@ for (l in 1:K) {       # On number of nodes
 for (i in 1:M) {
   for (j in 1:K) {
     only.the.true.teff.benchmark[i,j] <- (given.teff.benchmarks[star.code[i]]-offset.teff)/scale.teff
+    only.the.true.logg.benchmark[i,j] <- (given.logg.benchmarks[star.code[i]]-offset.logg)/scale.logg
   }
 }
 
@@ -327,7 +404,11 @@ for (i in 1:M) {
 for (j in 1:M) {
   observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[1:K,1:K] )
 
-  norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2)
+#Based on TEFF only -> ncoeff = 3 coefficients
+#  norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2)
+
+#Based on TEFF & LOGG only -> ncoeff = 6 coefficients
+  norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K]*only.the.true.logg.benchmark[j,1:K]
 
 }
 
@@ -355,7 +436,7 @@ teff.Rho[varIdx1,varIdx2] <- ( teff.CovMat[varIdx1,varIdx2] / (node.sd.teff[varI
 # Intial values for free parameters
 # Intial values for free parameters
 inits <- function() {
-  list(alpha = array(rnorm(3*num.setups*num.nodes,0,0.1),dim=c(3,num.nodes,num.setups)),
+  list(alpha = array(rnorm(ncoeff*num.setups*num.nodes,0,0.1),dim=c(ncoeff,num.nodes,num.setups)),
        teff.InvCovMat = diag(rgamma(num.nodes,0.1,0.1))
   )
 }
@@ -401,17 +482,17 @@ print(paste(' '))
 
 # These are examples of plots to see the tracing and posterior
 fit_mcmc <- as.mcmc(simple_test)
-plot(xyplot(fit_mcmc[,0:5]))
-plot(densityplot(fit_mcmc[,0:5]))
+plot(xyplot(fit_mcmc[,0:5]))  #plots per BM i=0-5
+plot(densityplot(fit_mcmc[,0:5])) #plots per BM i=0-5
 
-plot(xyplot(fit_mcmc[,5:10]))
-plot(densityplot(fit_mcmc[,5:10]))
+plot(xyplot(fit_mcmc[,5:10])) #plots per BM i=5-10
+plot(densityplot(fit_mcmc[,5:10])) #plots per BM i=5-10
 
 #Alphas
-plot(densityplot(fit_mcmc[,37:45]))
+plot(densityplot(fit_mcmc[,length(fit_mcmc[1,])-8:length(fit_mcmc[1,])]))
 
 # This will plot the Delta (given Teff of benchmarks minus estimated Teff of benchmarks) as a function Teff, logg and [Fe/H], so we can evaluate the trends that are left
-
+par(mfrow=c(3,1))
 results.teff <- summary(simple_test,vars=c('the.true.teff.bench'))
 plot(bench.param$TEFF,(given.teff.bench-results.teff[,4]),ylab='Delta (Given-Inferred)',xlab='Given Teff of Benchmarks')
 
@@ -426,57 +507,62 @@ coef.alphas <- summary(simple_test,vars=c('alpha'))[,4]
 
 #Define vectors to do independent quadratic fit for comparison
 #Basic order 2 fit to get a feel for coefficients
-ii <- order(given.teff.bench[star.code[vector.of.setups == 1]])
-xx <- given.teff.bench[star.code[vector.of.setups == 1]]
-xx <- xx[ii]
+it <- order(given.teff.bench[star.code[vector.of.setups == 1]])
+xt <- given.teff.bench[star.code[vector.of.setups == 1]]
+xt <- xt[it]  #teff in teff order
 
-plot(given.teff.bench[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),1]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c('Lumba - HR15N'),xlab=c('Given Benchmark Teff (per spectrum)'),ylab=c('Delta'))
-x <- (sort(given.teff.bench[star.code[vector.of.setups == 1]])-mean.bench.teff)/sd.bench.teff
-y <- (coef.alphas[1]+coef.alphas[2]*x+coef.alphas[3]*x^2)*sd.bench.teff #update date which ones depending on how many nodes
-#lines(x,y,col='red',lwd=3)
-points(xx,y,col='red',lwd=3)
-lines(xx,y,col='red',lwd=3)
+ig <- order(given.logg.bench[star.code[vector.of.setups == 1]])
+xg <- given.logg.bench[star.code[vector.of.setups == 1]]
+xg <- xg[ig]  #logg in logg order
 
-#Fit for Lumba
-yy <- (observed.node.teff.spectrum[(vector.of.setups == 1),1]-given.teff.bench[star.code[vector.of.setups == 1]])
-yyL <- yy[ii]
-fitpL <- lm( yyL~xx+I(xx^2))
-xxx <- xx
-lines(xxx, predict(fitpL, data.frame(x=xxx)), col='green')
-points(xxx, predict(fitpL, data.frame(x=xxx)), col='green')
+#constant vectors for plotting
+xts <- (given.teff.bench[star.code[vector.of.setups == 1]]-mean.bench.teff)/sd.bench.teff
+xgs <- (given.logg.bench[star.code[vector.of.setups == 1]]-mean.bench.logg)/sd.bench.logg
 
-plot(given.teff.bench[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),2]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c('OACT - HR15N'),xlab=c('Given Benchmark Teff (per spectrum)'),ylab=c('Delta'))
-x <- (sort(given.teff.bench[star.code[vector.of.setups == 1]])-mean.bench.teff)/sd.bench.teff
-y <- (coef.alphas[4]+coef.alphas[5]*x+coef.alphas[6]*x^2)*sd.bench.teff
-points(xx,y,col='red',lwd=3)
-lines(xx,y,col='red',lwd=3)
+xtst<- xts[it]  #scaled BM teff in teff order, if xgs is priority
+xtsg<- xts[ig]  #scaled BM teff in logg order, if xgs is priority
+xgst <- xgs[it]  #scaled BM logg in teff order, if xts is priority
+xgsg <- xgs[ig]  #scaled BM logg in logg order, if xts is priority
 
-#Fit for OACT
-yy <- (observed.node.teff.spectrum[(vector.of.setups == 1),2]-given.teff.bench[star.code[vector.of.setups == 1]])
-yyO <- yy[ii]
-fitpO <- lm( yyO~xx+I(xx^2))
-xxx <- xx
-lines(xxx, predict(fitpO, data.frame(x=xxx)), col='green')
-points(xxx, predict(fitpO, data.frame(x=xxx)), col='green')
+#Iterate over nodes per setup
+par(mfrow=c(1,2))
+ind <- 0
+for (each.node in list.nodes) {
+  ind <- ind+1
 
+  #Plot delta teff against node teff
+  plot(given.teff.bench[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),ind]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c(paste(list.nodes[ind], ': HR15N', sep = "")),xlab=c('Given Benchmark Teff (per spectrum)'),ylab=c('Delta Teff'))
+  #y <- (coef.alphas[1]+coef.alphas[2]*x+coef.alphas[3]*x^2)*sd.bench.teff #update date which ones depending on how many nodes
+  y <- (coef.alphas[1+(ind-1)*6]+coef.alphas[2+(ind-1)*6]*xts+coef.alphas[3+(ind-1)*6]*xts^2+coef.alphas[4+(ind-1)*6]*xgs+coef.alphas[5+(ind-1)*6]*xgs^2+coef.alphas[6+(ind-1)*6]*xts*xgs)*sd.bench.teff #update date which ones depending on how many nodes
+  #lines(x,y,col='red',lwd=3)
+  points(xt,y[it],col='red',lwd=3)
+  lines(xt,y[it],col='red',lwd=3)
+  
+  #Do quadratic fit with TEFF separately against TEFF
+  yy <- (observed.node.teff.spectrum[(vector.of.setups == 1),ind]-given.teff.bench[star.code[vector.of.setups == 1]])
+  yyn <- yy[it]
+  fitpn <- lm( yyn~xt+I(xt^2))
+  lines(xt, predict(fitpn, data.frame(x=xt)), col='green')
+  points(xt, predict(fitpn, data.frame(x=xt)), col='green')
+  
+  #Plot delta teff against node logg
+  plot(given.logg.bench[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),ind]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c(paste(list.nodes[ind], ': HR15N', sep = "")),xlab=c('Given Benchmark log g (per spectrum)'),ylab=c('Delta Teff'))
+  #y <- (coef.alphas[1]+coef.alphas[2]*x+coef.alphas[3]*x^2)*sd.bench.teff #update date which ones depending on how many nodes
+  #y <- y[ig]  #(coef.alphas[1+(ind-1)*6]+coef.alphas[2+(ind-1)*6]*xtsg+coef.alphas[3+(ind-1)*6]*xtsg^2+coef.alphas[4+(ind-1)*6]*xgs+coef.alphas[5+(ind-1)*6]*xgs^2+coef.alphas[6+(ind-1)*6]*xtsg*xgs)*sd.bench.teff #update date which ones depending on how many nodes
+  #lines(x,y,col='red',lwd=3)
+  points(xg,y[ig],col='red',lwd=3)
+  lines(xg,y[ig],col='red',lwd=3)
+  
+  #Do quadratic fit with TEFF separately against LOGG
+  yy <- (observed.node.teff.spectrum[(vector.of.setups == 1),ind]-given.teff.bench[star.code[vector.of.setups == 1]])
+  yyn <- yy[ig]
+  fitpn <- lm( yyn~xg+I(xg^2))
+  lines(xg, predict(fitpn, data.frame(x=xg)), col='green')
+  points(xg, predict(fitpn, data.frame(x=xg)), col='green')
+  
 
-plot(given.teff.bench[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),3]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c('EPINARBO - HR15N'),xlab=c('Given Benchmark Teff (per spectrum)'),ylab=c('Delta'))
-x <- (sort(given.teff.bench[star.code[vector.of.setups == 1]])-mean.bench.teff)/sd.bench.teff
-y <- (coef.alphas[7]+coef.alphas[8]*x+coef.alphas[9]*x^2)*sd.bench.teff
-points(xx,y,col='red',lwd=3)
-lines(xx,y,col='red',lwd=3)
+}
 
-#Fit for EPINARBO
-yy <- (observed.node.teff.spectrum[(vector.of.setups == 1),3]-given.teff.bench[star.code[vector.of.setups == 1]])
-yyE <- yy[ii]
-fitpE <- lm( yyE~xx+I(xx^2))
-xxx <- xx
-lines(xxx, predict(fitpE, data.frame(x=xxx)), col='green')
-points(xxx, predict(fitpE, data.frame(x=xxx)), col='green')
+par(mfrow=c(1,1))
 
-#plot(bench.param$TEFF[star.code[vector.of.setups == 1]],(observed.node.teff.spectrum[(vector.of.setups == 1),4]-given.teff.bench[star.code[vector.of.setups == 1]]),main=c('IAC - HR15N'),xlab=c('Given Benchmark Teff (per spectrum)'),ylab=c('Delta'))
-#x <- sort(bench.param$TEFF[star.code[vector.of.setups == 1]])
-#y <- coef.alphas[4]+coef.alphas[8]*x+coef.alphas[12]*x^2
-#lines(x,y,col='red',lwd=3)
-
-par(def.par)#- reset to default
+#par(def.par)#- reset to default

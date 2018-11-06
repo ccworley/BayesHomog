@@ -1,0 +1,6 @@
+Error in validObject(.Object) : 
+  invalid class “stanfit” object: The following variables have undefined values:  full_rank_estimates[5,1,3],The following variables have undefined values:  full_rank_estimates[5,2,3],The following variables have undefined values:  full_rank_estimates[5,3,3],The following variables have undefined values:  full_rank_estimates[5,4,3],The following variables have undefined values:  full_rank_estimates[5,1,4],The following variables have undefined values:  full_rank_estimates[5,2,4],The following variables have undefined values:  full_rank_estimates[5,3,4],The following variables have undefined values:  full_rank_estimates[5,4,4],The following variables have undefined values:  full_rank_estimates[5,1,5],The following variables have undefined values:  full_rank_estimates[6,1,5],The following variables have undefined values:  full_rank_estimates[20,1,5],The following variables have undefined values:  full_rank_estimates[5,2,5],The following variables have undefined values:  full_
+In addition: Warning message:
+In readLines(file, warn = TRUE) :
+  incomplete final line found on '/Users/charlotteworley/GitHub/BayesHomog/ac_ensemble.stan'
+> 

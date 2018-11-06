@@ -1,0 +1,16 @@
+I am sending you the parts of the code with the model that should work for the case with 3 nodes. I included the "teff.data", the new model "model.3nodes.matrix.bias", the inits and the run.jags statement.
+
+The variance of a given node is parametrized in this way:
+
+variance = beta1 * exp( beta2/ SNR ) + beta3
+
+But I could not really run many tests to see if this is a good way to do it.
+And a simpler alternative (that is already there but commented) is to use:
+
+variance = beta1 * (1/SNR) + beta2
+
+Feel free to test other options as well.
+
+With this you can probably do the homogenization of the Giraffe results including the SNR dependence. But let me know if something breaks down.
+
+If needed, and if there is time, I will come back to the parametrization with SNR for UVES later.

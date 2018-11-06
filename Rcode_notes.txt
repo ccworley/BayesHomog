@@ -1,0 +1,20 @@
+Useful notes on R
+
+Some packages are not in the R repositories, but probably on github with useful install instructions.
+jagstools is one such example:
+https://github.com/michaelmalick/r-jagstools
+
+
+
+
+*Interaction of defining the model in R and JAG
+-----------------------------------------------
+What is inside the model statement is not R code. You have to save it all together to feed to jags later. There would be other statements that would not work in the R command line (like the stochastic statements such as x ~ dunif(0,10), or things like that).
+
+And even when some of these functions exist in R, the parameters are not necessarily the same in R and in JAGS. To understand these statements you have to refer to the JAGS manual:
+http://web.sgh.waw.pl/~atoroj/ekonometria_bayesowska/jags_user_manual.pdf (for example)
+
+There are other issues to keep in mind also. We should not try to see this model statement as a piece of code by itself. In the sense that it is not solved in sequence, in the order that the statements appear in the model.
+
+In the case of the model that I wrote, for example, it is not that JAGS will first solve the first part about the prior on the true teff of the benchmarks, to later determine the bias functions that appear further down. For JAGS, the statements are fully connected, in the sense that they all define and influence each other. It would make no difference for the model, if we mix up the parts and, for example, write the part about the prior on the true teff of the benchmarks in the end of the model statement instead.
+-----------------------------------------------
