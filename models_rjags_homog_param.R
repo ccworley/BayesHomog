@@ -714,8 +714,11 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       if (sum(is.na(plot.y)) == length(plot.y)) { 
         plot.x <- c(-5,5)
         plot.y <- plot.x
-        }
-  
+      }
+      
+      print(plot.x)
+      print(plot.y)
+      
       plot(plot.x,plot.y,
            main=paste0(each.node,' - ',each.setup),xlab=paste0('Given ',variable,' of Benchmarks (per spectrum)'),
            ylab=paste0('Delta ',variable,' Observed - Bench'))
@@ -725,14 +728,20 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       x <- x[order.x]
       nor.x <- (x-mean.param.bench)/sd.param.bench
       
-      nor.y <- coef.alphas[(3*num.of.node)-2]+coef.alphas[(3*num.of.node)-1]*nor.x+coef.alphas[(3*num.of.node)]*nor.x^2
+      k1 <- ((3*num.of.node)-2)+((num.setup-1)*(length(nodes)*3))
+      k2 <- ((3*num.of.node)-1)+((num.setup-1)*(length(nodes)*3))
+      k3 <- ((3*num.of.node))+((num.setup-1)*(length(nodes)*3))      
+      
+      #print(paste('node = ',each.node,' setup = ',each.setup,' k1, k2, k3 =',k1,k2,k3,sep=" "))
+      
+      nor.y <- coef.alphas[k1]+coef.alphas[k2]*nor.x+coef.alphas[k3]*nor.x^2
       y <- nor.y*sd.param.bench
       lines(x,y,col='red',lwd=3)
       
-      y.1 <- sd.param.bench*(coef.alphas.1[(3*num.of.node)-2]+coef.alphas.1[(3*num.of.node)-1]*nor.x+coef.alphas.1[(3*num.of.node)]*nor.x^2)
+      y.1 <- sd.param.bench*(coef.alphas.1[k1]+coef.alphas.1[k2]*nor.x+coef.alphas.1[k3]*nor.x^2)
       lines(x,y.1,col='blue',lwd=3) 
       
-      y.3 <- sd.param.bench*(coef.alphas.3[(3*num.of.node)-2]+coef.alphas.3[(3*num.of.node)-1]*nor.x+coef.alphas.3[(3*num.of.node)]*nor.x^2)
+      y.3 <- sd.param.bench*(coef.alphas.3[k1]+coef.alphas.3[k2]*nor.x+coef.alphas.3[k3]*nor.x^2)
       lines(x,y.3,col='blue',lwd=3)
     }
   }

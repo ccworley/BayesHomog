@@ -26,38 +26,46 @@ source('homog_plots.R')
 # nodes.param <- out.list[[2]]
 # nodes.ids <- as.data.frame(out.list[[1]])
 # nodes.flags <-  out.list[[3]]
-# rm(out.list)
+#rm(out.list)
 
 #Data set of all setups and nodes
-nodes.param.all <- nodes.param
-nodes.flags.all <- nodes.flags
-nodes.ids.all <- nodes.ids
+# nodes.param.all <- nodes.param
+# nodes.flags.all <- nodes.flags
+# nodes.ids.all <- nodes.ids
 
 #Data set of all setups and nodes - save back to main variables as needed.
-#nodes.param <- nodes.param.all
-#nodes.flags <- nodes.flags.all
-#nodes.ids <- nodes.ids.all
+#Uncomment this BUT COMMENT the above!!!
+nodes.param <- nodes.param.all
+nodes.flags <- nodes.flags.all
+nodes.ids <- nodes.ids.all
 
 
 # Restrict to one setup for the moment
-anasetup = "HR9B"
-if (length(grep("HR15N",anasetup)) > 0) {
+anasetup = "HR9B"  #"HR9B"
+if ("HR15N" %in% anasetup) {
   list.nodes <- c('Lumba','OACT','EPINARBO')  #,'MaxPlanck')
-} else if (length(grep("HR9B",anasetup)) > 0) {
+} else if ("HR9B" %in% anasetup) {
   list.nodes <- c('OACT','EPINARBO')
-} else if (length(grep("HR10|HR21",anasetup)) > 0) {
+} else if ("HR10|HR21" %in% anasetup) {
   list.nodes <- c('Lumba','IAC')
-} else if (length(grep("HR21",anasetup)) > 0) {
+} else if ("HR21" %in%anasetup) {
   list.nodes <- c('Lumba','IAC','MaxPlanck')
-} else if (length(grep("HR10",anasetup)) > 0) {
+} else if ("HR10" %in% anasetup) {
   list.nodes <- c('IAC','MaxPlanck')
 }
 
-
-
 #Filter sample to just the nodes and rows for this setup
 #**** need to restrict this further for HR21 *****
-filter.setup <- (nodes.ids$SETUP %in% anasetup)
+if ("HR21" %in% anasetup) {
+  #GES_TYPEs for HR21-only Milky Way Bulge plus Standards
+  hr21gestypes <-c('AR_MW_BL','AR_SD_BM','AR_SD_GC','GE_MW_BL','GE_SD_BC','GE_SD_BM','GE_SD_BW','GE_SD_CR','GE_SD_GC','GE_SD_K2','GE_SD_MC','GE_SD_OC','GE_SD_PC','GE_SD_RV','GE_SD_TL')
+  filter.setup <- (nodes.ids$SETUP %in% anasetup & nodes.ids$GES_TYPE %in% hr21gestypes)
+  #print('here')
+} else {
+  filter.setup <- (nodes.ids$SETUP %in% anasetup)
+  #print('heretoo')
+}
+
 nodes.param <- nodes.param[filter.setup,list.nodes,]             # Array (nrow = num.stars, ncol = num.nodes, n.third = parameters [TEFF, E_TEFF, LOGG, E_LOGG, FEH, E_FEH, XI, E_XI] )
 nodes.flags <- nodes.flags[filter.setup,list.nodes,]             # Array (nrow = num.stars, ncol = num.nodes, n.third = flag) where flag = PECULI, REMARK, TECH in that order
 nodes.ids <- nodes.ids[filter.setup,]
@@ -414,9 +422,10 @@ corr.diag.of.variable(model.for.feh,variable=c('alpha'))
 #plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param)
 plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param)
 
-#look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
-#                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
-#                            nodes=list.nodes,mean.param.bench=mean(given.teff.bench,na.rm=T),sd.param.bench=sd(given.teff.bench,na.rm=T))
+
+look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
+                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
+                            nodes=list.nodes,mean.param.bench=mean(given.teff.bench,na.rm=T),sd.param.bench=sd(given.teff.bench,na.rm=T))
 
 #look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.data=bench.param,observed.data=observed.node.logg.spectrum,
 #                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
