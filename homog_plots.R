@@ -137,27 +137,45 @@ list.flags <- function(nodes.flags) {
 
 eliminate.flagged.dr5 <- function(nodes.param,nodes.flags,flags.all,flags.specific) {
   #
+  #print(str(nodes.param))
   list.nodes <- dimnames(nodes.flags)[[2]]
   filter.results <- vector("logical",length=dim(nodes.flags)[1])
   exclude.all <- vector("logical",length=dim(nodes.flags)[1])
   list.param <- dimnames(nodes.param)[[3]]
   col.peculi <- which(dimnames(nodes.flags)[[3]] == 'PECULI')
   col.tech <- which(dimnames(nodes.flags)[[3]] == 'TECH')
+  
+  #print('Number of NaN before flag eliminate')
+  #print(sum(is.na(match(nodes.param[,,"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'Lumba',"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'EPINARBO',"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'OACT',"TEFF"],"NaN"))))
+  
   # Exclude in all nodes
   for (each.flag in flags.all) {
+    #print(each.flag)
     for (each.node in list.nodes) {
+      #print(each.node)
       node.col <- which(dimnames(nodes.flags)[[2]] == each.node)
+      #print(node.col)
       # Only check PECULI and TECH
       exclude.all <- (exclude.all | grepl(each.flag,nodes.flags[,node.col,col.peculi]) | grepl(each.flag,nodes.flags[,node.col,col.tech]))
+      #print(length(exclude.all))
+      #print(sum(exclude.all))
+      #print(which(exclude.all, arr.ind = FALSE, useNames = TRUE))
+      #print('next')
       # exclude all will have TRUE in each place that was TRUE at least once
     }
   }
   # Exclude per node
   for (each.flag in flags.specific) {
+    #print(each.flag)
     for (each.node in list.nodes) {
       node.col <- which(dimnames(nodes.flags)[[2]] == each.node)
       # Only check PECULI and TECH
       filter.results <- (exclude.all | grepl(each.flag,nodes.flags[,node.col,col.peculi]) | grepl(each.flag,nodes.flags[,node.col,col.tech]))
+      #filter.results <- (grepl(each.flag,nodes.flags[,node.col,col.peculi]) | grepl(each.flag,nodes.flags[,node.col,col.tech]))
+      # print(filter.results)
       # final filter.results will have TRUE in each place that was TRUE at least once + exclude.all
       node.col <- which(dimnames(nodes.param)[[2]] == each.node)
       for (each.param in list.param) {
@@ -166,6 +184,12 @@ eliminate.flagged.dr5 <- function(nodes.param,nodes.flags,flags.all,flags.specif
       }
     }
   }
+  #print('Number of NaN AFTER flag eliminate')
+  #print(sum(is.na(match(nodes.param[,,"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'Lumba',"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'EPINARBO',"TEFF"],"NaN"))))
+  #print(sum(is.na(match(nodes.param[,'OACT',"TEFF"],"NaN"))))
+  
   #
   # Let's also produce the final combined flags for the recommended FITS file
   #
@@ -186,6 +210,8 @@ eliminate.flagged.dr5 <- function(nodes.param,nodes.flags,flags.all,flags.specif
   }
   final.list <- list(nodes.param,recom.flags)
   return(final.list)
+  #print(str(nodes.param))
+  
 }
 
 recom.flags.per.cname.dr5 <- function(nodes.ids,recom.flags,final.abun.table) {
@@ -468,7 +494,7 @@ apply.filter.outliers <- function(in.nodes.param,filter.outliers) {
 #
 # Read the reference parameters of the benchmark stars
 #
-load.bench.fits <- function(fitsname,columns=columns.for.bench,path.file=path.for.bench,only.fgk=TRUE) {
+load.benchwg11.fits <- function(fitsname,columns=columns.for.bench,path.file=path.for.bench,only.fgk=TRUE) {
   filename <- paste0(path.file,fitsname,sep="")
   bench.file <- readFITS(file=filename, hdu=1)
   list.of.columns <- columns
@@ -480,7 +506,7 @@ load.bench.fits <- function(fitsname,columns=columns.for.bench,path.file=path.fo
     numb.col <- which(bench.file$colNames == list.of.columns[ik])
     bench.stars[,ik] <- str_trim(bench.file$col[[numb.col]]) 
   }
-  numeric.columns <- list.of.columns[!(list.of.columns %in% c('GES_FLD','GES_TYPE','GES_OBJECT','OBJECT','CNAME','FILENAME','CONSTFILES'))]
+  numeric.columns <- list.of.columns[!(list.of.columns %in% c('GES_FLD','GES_TYPE','ID1','GES_OBJECT','OBJECT','CNAME','FILENAME','CONSTFILES'))]
   for (each.col in numeric.columns) {
     ik <- which(list.of.columns == each.col)
     bench.stars[,ik] <- as.numeric(as.vector(bench.stars[,ik]))

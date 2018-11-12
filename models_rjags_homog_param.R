@@ -128,13 +128,23 @@ for (i in seq(1,nrow(observed.teff))) {
       keep.track.of.missing[i,j] <- 2
       ik <- ik+1
     } else {
-      manipulated.node.teff.spectrum[i,j] <- observed.teff[i,j]
-      manipulated.node.logg.spectrum[i,j] <- observed.logg[i,j]
-      i.not.missing.teff[jk] <- i
-      j.not.missing.teff[jk] <- j
-      code.bench.not.missing[jk] <- the.stars[i]
-      keep.track.of.missing[i,j] <- 1
-      jk <- jk+1
+      if (is.na(observed.logg[i,j])) {
+        manipulated.node.teff.spectrum[i,j] <- bench.data$TEFF[the.stars[i]]
+        manipulated.node.logg.spectrum[i,j] <- bench.data$LOGG[the.stars[i]]
+        i.of.missing.teff[ik] <- i
+        j.of.missing.teff[ik] <- j
+        code.bench.missing[ik] <- the.stars[i]
+        keep.track.of.missing[i,j] <- 2
+        ik <- ik+1
+      } else {      
+        manipulated.node.teff.spectrum[i,j] <- observed.teff[i,j]
+        manipulated.node.logg.spectrum[i,j] <- observed.logg[i,j]
+        i.not.missing.teff[jk] <- i
+        j.not.missing.teff[jk] <- j
+        code.bench.not.missing[jk] <- the.stars[i]
+        keep.track.of.missing[i,j] <- 1
+        jk <- jk+1
+      }
     }
   }
 }
@@ -691,7 +701,7 @@ plot.against.reference.bench <- function(the.model,variable=c('TEFF'),bench.data
 
 look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
                                         the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
-                                        nodes=list.nodes,mean.param.bench,sd.param.bench) {
+                                        nodes=list.nodes,mean.param.bench,sd.param.bench,observed.snr=snr.spec.vec) {
   variable <- str_trim(variable)
   if (length(variable) != 1) { stop(paste('Choose one variable at a time from TEFF or LOGG or FEH')) }
   if (!(variable %in% c("TEFF","LOGG","FEH"))) { stop(paste('Variable has to be one of TEFF, LOGG or FEH - and written in uppercase'))}
@@ -710,6 +720,12 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       
       plot.x <- bench.data[the.stars[the.setups == num.setup],this.bench.col]
       plot.y <- (observed.data[(the.setups == num.setup),num.of.node]-plot.x)
+      plot.s <- observed.snr[(the.setups == num.setup),num.of.node]
+        
+      plot.t <- bench.data[the.stars[the.setups == num.setup],'TEFF']
+      plot.l <- bench.data[the.stars[the.setups == num.setup],'LOGG']
+      plot.f <- bench.data[the.stars[the.setups == num.setup],'FEH']
+      
       
       if (sum(is.na(plot.y)) == length(plot.y)) { 
         plot.x <- c(-5,5)
@@ -719,7 +735,7 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       print(plot.x)
       print(plot.y)
       
-      plot(plot.x,plot.y,
+      plot(plot.x,plot.y,pch = 16,col = rgb(0,0,0,0.05),
            main=paste0(each.node,' - ',each.setup),xlab=paste0('Given ',variable,' of Benchmarks (per spectrum)'),
            ylab=paste0('Delta ',variable,' Observed - Bench'))
       
@@ -743,6 +759,40 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       
       y.3 <- sd.param.bench*(coef.alphas.3[k1]+coef.alphas.3[k2]*nor.x+coef.alphas.3[k3]*nor.x^2)
       lines(x,y.3,col='blue',lwd=3)
+
+      #par(mfrow=c(1,3))
+      
+      
+      plot(plot.l,plot.y,
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given LOGG of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      plot.lx = plot.l[order.x]
+      order.l <- order(plot.lx)
+      lines(plot.lx[order.l],y[order.l],col='red',lwd=3)
+      lines(plot.lx[order.l],y.1[order.l],col='blue',lwd=3) 
+      lines(plot.lx[order.l],y.3[order.l],col='blue',lwd=3)
+      
+      plot(plot.f,plot.y,
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given FEH of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      plot.fx = plot.f[order.x]
+      order.f <- order(plot.fx)
+      lines(plot.fx[order.f],y[order.f],col='red',lwd=3)
+      lines(plot.fx[order.f],y.1[order.f],col='blue',lwd=3) 
+      lines(plot.fx[order.f],y.3[order.f],col='blue',lwd=3)
+      
+      plot(plot.s,plot.y,pch = 16,col = rgb(0,0,0,0.05),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Measured SNR (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      
+      #plot.tx = plot.t[order.x]
+      #order.t <- order(plot.tx)
+      #lines(plot.tx[order.t],y[order.t],col='red',lwd=3)
+      #lines(plot.tx[order.t],y.1[order.t],col='blue',lwd=3) 
+      #lines(plot.tx[order.t],y.3[order.t],col='blue',lwd=3)
+      
+      #par(mfrow=c(1,1))
+      
     }
   }
   

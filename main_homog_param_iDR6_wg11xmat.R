@@ -111,9 +111,8 @@ print(sum(is.na(match(correc.flags.nodes.param[,,"TEFF"],"NaN"))))
 print(sum(is.na(match(correc.flags.nodes.param[,'Lumba',"TEFF"],"NaN"))))
 print(sum(is.na(match(correc.flags.nodes.param[,'EPINARBO',"TEFF"],"NaN"))))
 print(sum(is.na(match(correc.flags.nodes.param[,'OACT',"TEFF"],"NaN"))))
-
 recom.flags <- list.flag.corrected[[2]]
-stop('test')
+
 # Remove weird results of IAC and MaxPlanck
 correc.nodes.param <- correct.iacmp.grid(correc.flags.nodes.param)
 #correc.nodes.param <- correct.iacaip.grid(correc.flags.nodes.param)
@@ -129,10 +128,10 @@ clean.nodes.param <- apply.filter.outliers(correc.nodes.param,filter.outliers)
 bench.path <- paste('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/Inputs/')
 #file.bench <- paste('GES_iDR6_FGKMCoolWarm_Benchmarks_AcceptedParams_11092018.fits')
 file.bench <- paste('GES_WG11xmatch_HR15N.fits')
-columns.to.read <- c('GES_FLD','GES_TYPE','TEFF','E_TEFF','LOGG','E_LOGG','FEH','SIG1_MH0','SIG2_MH0','DELTA_ION','DELTA_LTE','XI') # Need the real errors of [Fe/H]; in the meantime using will be using the sqrt(delta_ion^2 + delta_lte^2)
+columns.to.read <- c('GES_FLD','GES_TYPE','ID1','TEFF','E_TEFF','LOGG','E_LOGG','FEH','SIG1_MH0','SIG2_MH0','DELTA_ION','DELTA_LTE','XI') # Need the real errors of [Fe/H]; in the meantime using will be using the sqrt(delta_ion^2 + delta_lte^2)
 
 # Load the parameters of the benchmark stars
-bench.param <- load.bench.fits(fitsname=file.bench,columns=columns.to.read,path.file=bench.path,only.fgk=FALSE)
+bench.param <- load.benchwg11.fits(fitsname=file.bench,columns=columns.to.read,path.file=bench.path,only.fgk=FALSE)
 rm(bench.path,file.bench,columns.to.read)
 
 # Do some plots
@@ -187,11 +186,13 @@ source('models_rjags_homog_param.R')
 bench.param <- adds.feh.error(data.of.bench=bench.param,error.columns=c('SIG1_MH0')) 
 
 # To make sure that we use only stars from bench.param that are also included in the nodes.ids
-filter.bench <- (bench.param$GES_FLD %in% nodes.ids$GES_FLD)
+#filter.bench <- (bench.param$GES_FLD %in% nodes.ids$GES_FLD)
+filter.bench <- (bench.param$ID1 %in% nodes.ids$CNAME)
 bench.param <- bench.param[filter.bench,]
 
 # From the Node results, select all and only entries of the benchmarks (for specific SETUP : already selected above)
-filter.bench <- (nodes.ids$GES_FLD %in% bench.param$GES_FLD)
+filter.bench <- (nodes.ids$CNAME %in% bench.param$ID1)
+#filter.bench <- (nodes.ids$GES_FLD %in% bench.param$GES_FLD)
 node.measured.param.bench <- nodes.param[filter.bench,,]
 metadata.of.bench.spectra <- nodes.ids[filter.bench,]
 rm(filter.bench)
@@ -232,7 +233,8 @@ rm(all.observed)
 # Define star.code: it traces back to which benchmark a given line in observed.node.teff/logg.spectrum corresponds to
 star.code <- vector('numeric',length=nrow(observed.node.teff.spectrum))
 for (ik in seq(1,nrow(observed.node.teff.spectrum))) {
-  star.code[ik] <- which(bench.param$GES_FLD == metadata.of.bench.spectra$GES_FLD[ik])
+  star.code[ik] <- which(bench.param$ID1 == metadata.of.bench.spectra$CNAME[ik])
+  #star.code[ik] <- which(bench.param$GES_FLD == metadata.of.bench.spectra$GES_FLD[ik])
 }
 
 # For FEH this is all different, because some "benchmarks" do not have FEH - they can be used for TEFF and LOGG but not for FEH
