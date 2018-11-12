@@ -113,7 +113,7 @@ print(sum(is.na(match(correc.flags.nodes.param[,'EPINARBO',"TEFF"],"NaN"))))
 print(sum(is.na(match(correc.flags.nodes.param[,'OACT',"TEFF"],"NaN"))))
 
 recom.flags <- list.flag.corrected[[2]]
-stop('test')
+
 # Remove weird results of IAC and MaxPlanck
 correc.nodes.param <- correct.iacmp.grid(correc.flags.nodes.param)
 #correc.nodes.param <- correct.iacaip.grid(correc.flags.nodes.param)
@@ -127,8 +127,8 @@ clean.nodes.param <- apply.filter.outliers(correc.nodes.param,filter.outliers)
 
 # Read the Benchmarks and the reference parameters
 bench.path <- paste('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/Inputs/')
-#file.bench <- paste('GES_iDR6_FGKMCoolWarm_Benchmarks_AcceptedParams_11092018.fits')
-file.bench <- paste('GES_WG11xmatch_HR15N.fits')
+file.bench <- paste('GES_iDR6_FGKMCoolWarm_Benchmarks_AcceptedParams_11092018.fits')
+#file.bench <- paste('GES_WG11xmatch_HR15N.fits')
 columns.to.read <- c('GES_FLD','GES_TYPE','TEFF','E_TEFF','LOGG','E_LOGG','FEH','SIG1_MH0','SIG2_MH0','DELTA_ION','DELTA_LTE','XI') # Need the real errors of [Fe/H]; in the meantime using will be using the sqrt(delta_ion^2 + delta_lte^2)
 
 # Load the parameters of the benchmark stars
@@ -240,7 +240,7 @@ for (ik in seq(1,nrow(observed.node.teff.spectrum))) {
 
 # WARNING: Inside the function below, I chose to assign Sigma_FEH = \pm 0.2 for those benchmarks without error in FEH
 
-new.data.for.feh <- correct.data.for.feh(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum)
+new.data.for.feh <- correct.data.for.feh(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum,observed.snr=snr.spec.vec)
 corr.bench.param <- new.data.for.feh[[1]]
 corr.metadata.of.bench.spectra <- new.data.for.feh[[2]]
 corr.observed.node.feh.spectrum <- new.data.for.feh[[3]]
@@ -248,6 +248,7 @@ corr.star.code <- new.data.for.feh[[4]]
 corr.given.feh.bench <- new.data.for.feh[[5]]
 corr.given.sigma.feh.bench <- new.data.for.feh[[6]]
 positions.with.feh <- new.data.for.feh[[7]]
+corr.snr.spec.vec  <- new.data.for.feh[[8]]
 rm(new.data.for.feh)
 
 # Create the manipulated data vectors that take care of missing values - First for Teff and logg
@@ -427,8 +428,8 @@ show.correlation.matrix(model.for.feh,c('FEH'))
 #corr.diag.of.variable(model.for.logg,variable=c('alpha'))
 corr.diag.of.variable(model.for.feh,variable=c('alpha'))
 
-#plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param)
-#plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param)
+plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param)
+plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param)
 plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param)
 
 
@@ -445,7 +446,7 @@ look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.da
 look.at.node.bias.functions(the.model=model.for.feh,variable=c('FEH'),bench.data=corr.bench.param,observed.data=corr.observed.node.feh.spectrum,
                             the.setups=corr.vector.of.setups,the.stars=corr.star.code,col.of.setups=corr.metadata.of.bench.spectra$SETUP,
                             nodes=list.nodes,mean.param.bench=mean(given.feh.bench,na.rm=T),sd.param.bench=sd(given.feh.bench,na.rm=T),
-                            observed.snr=snr.spec.vec)
+                            observed.snr=corr.snr.spec.vec)
   
 stop('Reference Models done')
 # Save the models for future use

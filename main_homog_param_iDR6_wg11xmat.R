@@ -187,7 +187,11 @@ bench.param <- adds.feh.error(data.of.bench=bench.param,error.columns=c('SIG1_MH
 
 # To make sure that we use only stars from bench.param that are also included in the nodes.ids
 #filter.bench <- (bench.param$GES_FLD %in% nodes.ids$GES_FLD)
-filter.bench <- (bench.param$ID1 %in% nodes.ids$CNAME)
+if ("HR15N" %in% anasetup) {
+  filter.bench <- (bench.param$ID1 %in% nodes.ids$CNAME)  # & bench.param$TEFF < 7000)
+} else {
+  filter.bench <- (bench.param$ID1 %in% nodes.ids$CNAME)
+}
 bench.param <- bench.param[filter.bench,]
 
 # From the Node results, select all and only entries of the benchmarks (for specific SETUP : already selected above)
@@ -196,6 +200,26 @@ filter.bench <- (nodes.ids$CNAME %in% bench.param$ID1)
 node.measured.param.bench <- nodes.param[filter.bench,,]
 metadata.of.bench.spectra <- nodes.ids[filter.bench,]
 rm(filter.bench)
+
+# Find and remove outliers compared to accepted values
+# node.measured.param.bench <- old.node.measured.param.bench
+filter.outliers <- find.outliers.accepted(node.measured.param.bench,metadata.of.bench.spectra,bench.param)
+clean.node.measured.param.bench <- apply.filter.outliers(node.measured.param.bench,filter.outliers)
+old.node.measured.param.bench <- node.measured.param.bench
+node.measured.param.bench <- clean.node.measured.param.bench
+
+## Find value of Accepted Star - match on CNAME
+#param.as.numbers <- as.data.frame(node.measured.param.bench[,,"TEFF"])
+#param.as.numbers <- apply(param.as.numbers,2,as.numeric)
+
+#mean.param <- vector('numeric',length=nrow(node.measured.param.bench))
+#for (ik in seq(1,nrow(node.measured.param.bench))) {
+#  mean.param[ik] <- bench.param$TEFF[which(bench.param$ID1 == metadata.of.bench.spectra$CNAME[ik])]
+#  #print(which(in.bench.param$ID1 == metadata.nodes.param$CNAME[ik]))
+#  #print(bench.param.col[which(in.bench.param$ID1 == metadata.nodes.param$CNAME[ik])])
+#}
+#diff.to.mean <- abs(param.as.numbers-mean.param)
+#stop()
 
 # Now, let's define all data structures that will be used in the model
 # 1) Numbers
@@ -242,7 +266,7 @@ for (ik in seq(1,nrow(observed.node.teff.spectrum))) {
 
 # WARNING: Inside the function below, I chose to assign Sigma_FEH = \pm 0.2 for those benchmarks without error in FEH
 
-new.data.for.feh <- correct.data.for.feh(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum)
+new.data.for.feh <- correct.data.for.feh(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum,observed.snr=snr.spec.vec)
 corr.bench.param <- new.data.for.feh[[1]]
 corr.metadata.of.bench.spectra <- new.data.for.feh[[2]]
 corr.observed.node.feh.spectrum <- new.data.for.feh[[3]]
@@ -250,6 +274,7 @@ corr.star.code <- new.data.for.feh[[4]]
 corr.given.feh.bench <- new.data.for.feh[[5]]
 corr.given.sigma.feh.bench <- new.data.for.feh[[6]]
 positions.with.feh <- new.data.for.feh[[7]]
+corr.snr.spec.vec  <- new.data.for.feh[[8]]
 rm(new.data.for.feh)
 
 # Create the manipulated data vectors that take care of missing values - First for Teff and logg
@@ -408,30 +433,30 @@ model.for.teff <- run.the.reference.model(input.data=teff.data,the.model=model.t
                                           size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.teff.bench","alpha","teff.Rho","node.sd.teff"),
                                           model.inits=list.inits.teff)
 
-model.for.logg <- run.the.reference.model(input.data=logg.data,the.model=model.logg.matrix.bias,num.chains=num.chains.for.logg,num.adapt=1000,num.bur=1000,
-                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.logg.bench","alpha","logg.Rho","node.sd.logg"),
-                                          model.inits=list.inits.logg)
+#model.for.logg <- run.the.reference.model(input.data=logg.data,the.model=model.logg.matrix.bias,num.chains=num.chains.for.logg,num.adapt=1000,num.bur=1000,
+#                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.logg.bench","alpha","logg.Rho","node.sd.logg"),
+#                                          model.inits=list.inits.logg)
 
-model.for.feh <- run.the.reference.model(input.data=feh.data,the.model=model.feh.matrix.bias,num.chains=num.chains.for.feh,num.adapt=1000,num.bur=1000,
-                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.feh.bench","alpha","feh.Rho","node.sd.feh"),
-                                          model.inits=list.inits.feh)
+#model.for.feh <- run.the.reference.model(input.data=feh.data,the.model=model.feh.matrix.bias,num.chains=num.chains.for.feh,num.adapt=1000,num.bur=1000,
+#                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.feh.bench","alpha","feh.Rho","node.sd.feh"),
+#                                          model.inits=list.inits.feh)
 
 
 #
 # Series of plots and other diagnostics of the model
 #
 
-#show.correlation.matrix(model.for.teff,c('TEFF'))
+show.correlation.matrix(model.for.teff,c('TEFF'))
 #show.correlation.matrix(model.for.logg,c('LOGG'))
-show.correlation.matrix(model.for.feh,c('FEH'))
+#show.correlation.matrix(model.for.feh,c('FEH'))
 
-#corr.diag.of.variable(model.for.teff,variable=c('alpha'))
+corr.diag.of.variable(model.for.teff,variable=c('alpha'))
 #corr.diag.of.variable(model.for.logg,variable=c('alpha'))
-corr.diag.of.variable(model.for.feh,variable=c('alpha'))
+#corr.diag.of.variable(model.for.feh,variable=c('alpha'))
 
-#plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param)
+plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param)
 #plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param)
-plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param)
+#plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param)
 
 
 look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
@@ -439,15 +464,15 @@ look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.da
                             nodes=list.nodes,mean.param.bench=mean(given.teff.bench,na.rm=T),sd.param.bench=sd(given.teff.bench,na.rm=T),
                             observed.snr=snr.spec.vec)
 
-look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.data=bench.param,observed.data=observed.node.logg.spectrum,
-                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
-                            nodes=list.nodes,mean.param.bench=mean(given.logg.bench,na.rm=T),sd.param.bench=sd(given.logg.bench,na.rm=T),
-                            observed.snr=snr.spec.vec)
+#look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.data=bench.param,observed.data=observed.node.logg.spectrum,
+#                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
+#                            nodes=list.nodes,mean.param.bench=mean(given.logg.bench,na.rm=T),sd.param.bench=sd(given.logg.bench,na.rm=T),
+#                            observed.snr=snr.spec.vec)
 
-look.at.node.bias.functions(the.model=model.for.feh,variable=c('FEH'),bench.data=corr.bench.param,observed.data=corr.observed.node.feh.spectrum,
-                            the.setups=corr.vector.of.setups,the.stars=corr.star.code,col.of.setups=corr.metadata.of.bench.spectra$SETUP,
-                            nodes=list.nodes,mean.param.bench=mean(given.feh.bench,na.rm=T),sd.param.bench=sd(given.feh.bench,na.rm=T),
-                            observed.snr=snr.spec.vec)
+#look.at.node.bias.functions(the.model=model.for.feh,variable=c('FEH'),bench.data=corr.bench.param,observed.data=corr.observed.node.feh.spectrum,
+#                            the.setups=corr.vector.of.setups,the.stars=corr.star.code,col.of.setups=corr.metadata.of.bench.spectra$SETUP,
+#                            nodes=list.nodes,mean.param.bench=mean(given.feh.bench,na.rm=T),sd.param.bench=sd(given.feh.bench,na.rm=T),
+#                            observed.snr=corr.snr.spec.vec)
   
 stop('Reference Models done')
 # Save the models for future use

@@ -73,7 +73,7 @@ node.measurements.of.reference.stars <- function(data.of.nodes=node.measured.par
 ############################################
 # Function to create some data structures for FEH, because some benchmarks do not have FEH measurmeent (despite having TEFF and LOGG)
 
-correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum) {
+correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code,orig.metadata=metadata.of.bench.spectra,observed.feh=observed.node.feh.spectrum,observed.snr=snr.spec.vec) {
   bench.without.feh <- which(is.na(bench.data$FEH))  
   bench.with.feh <- which(!is.na(bench.data$FEH))  
   positions.with.feh <- which(!(orig.star.code %in% bench.without.feh))  
@@ -81,6 +81,7 @@ correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code
   corr.bench.param <- bench.data[bench.with.feh,]
   corr.metadata.of.bench.spectra <- orig.metadata[positions.with.feh,]
   corr.observed.node.feh.spectrum <- observed.feh[positions.with.feh,]
+  corr.observed.snr <- observed.snr[positions.with.feh,]
   
   corr.star.code <- vector('numeric',length=nrow(corr.observed.node.feh.spectrum))
   for (ik in seq(1,nrow(corr.observed.node.feh.spectrum))) {
@@ -91,7 +92,7 @@ correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code
   corr.given.sigma.feh.bench <- bench.data$E_FEH[bench.with.feh]
   corr.given.sigma.feh.bench[is.na(corr.given.sigma.feh.bench)] <- 0.2 # If there is no official error, assume a large value
   
-  all.data <- list(corr.bench.param,corr.metadata.of.bench.spectra,corr.observed.node.feh.spectrum,corr.star.code,corr.given.feh.bench,corr.given.sigma.feh.bench,positions.with.feh)
+  all.data <- list(corr.bench.param,corr.metadata.of.bench.spectra,corr.observed.node.feh.spectrum,corr.star.code,corr.given.feh.bench,corr.given.sigma.feh.bench,positions.with.feh,corr.observed.snr)
   return(all.data)
 }
 
@@ -686,12 +687,14 @@ plot.against.reference.bench <- function(the.model,variable=c('TEFF'),bench.data
 
   test <- summary(the.model,vars=c('the.true'))
   the.col <- which(colnames(bench.data) == variable)
+  par(mfrow=c(1,3))
   
   plot(bench.data$TEFF,(bench.data[,the.col]-test[,4]),main=variable,xlab=paste0('Given TEFF of Benchmarks'),ylab=paste0('Delta ',variable,' (given minus homog)'))
   
   plot(bench.data$LOGG,(bench.data[,the.col]-test[,4]),main=variable,xlab='Given LOGG of Benchmarks',ylab=paste0('Delta ',variable,' (given minus homog)'))
   
   plot(bench.data$FEH,(bench.data[,the.col]-test[,4]),main=variable,xlab='Given FEH of Benchmarks',ylab=paste0('Delta ',variable,' (given minus homog)'))
+  par(mfrow=c(1,1))
   
 }
 
@@ -721,7 +724,8 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       plot.x <- bench.data[the.stars[the.setups == num.setup],this.bench.col]
       plot.y <- (observed.data[(the.setups == num.setup),num.of.node]-plot.x)
       plot.s <- observed.snr[(the.setups == num.setup),num.of.node]
-        
+      str(plot.s)
+      str(plot.y)
       plot.t <- bench.data[the.stars[the.setups == num.setup],'TEFF']
       plot.l <- bench.data[the.stars[the.setups == num.setup],'LOGG']
       plot.f <- bench.data[the.stars[the.setups == num.setup],'FEH']
@@ -732,18 +736,23 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
         plot.y <- plot.x
       }
       
-      print(plot.x)
-      print(plot.y)
       
-      plot(plot.x,plot.y,pch = 16,col = rgb(0,0,0,0.05),
-           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given ',variable,' of Benchmarks (per spectrum)'),
-           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      par(mfrow=c(1,4))
+      
+      #X
+      #plot(plot.x,plot.y,pch = 16,col = rgb(0,0,0,0.5),
+      #     main=paste0(each.node,' - ',each.setup),xlab=paste0('Given ',variable,' of Benchmarks (per spectrum)'),
+      #     ylab=paste0('Delta ',variable,' Observed - Bench'))
       
       x <- plot.x
       order.x <- order(x)
       x <- x[order.x]
       nor.x <- (x-mean.param.bench)/sd.param.bench
+
+      #print(plot.x[order.x])
+      #print(plot.y[order.x])
       
+            
       k1 <- ((3*num.of.node)-2)+((num.setup-1)*(length(nodes)*3))
       k2 <- ((3*num.of.node)-1)+((num.setup-1)*(length(nodes)*3))
       k3 <- ((3*num.of.node))+((num.setup-1)*(length(nodes)*3))      
@@ -752,36 +761,50 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       
       nor.y <- coef.alphas[k1]+coef.alphas[k2]*nor.x+coef.alphas[k3]*nor.x^2
       y <- nor.y*sd.param.bench
-      lines(x,y,col='red',lwd=3)
+      #lines(x,y,col='red',lwd=3)
       
       y.1 <- sd.param.bench*(coef.alphas.1[k1]+coef.alphas.1[k2]*nor.x+coef.alphas.1[k3]*nor.x^2)
-      lines(x,y.1,col='blue',lwd=3) 
+      #lines(x,y.1,col='blue',lwd=3) 
       
       y.3 <- sd.param.bench*(coef.alphas.3[k1]+coef.alphas.3[k2]*nor.x+coef.alphas.3[k3]*nor.x^2)
-      lines(x,y.3,col='blue',lwd=3)
+      #lines(x,y.3,col='blue',lwd=3)
 
-      #par(mfrow=c(1,3))
+      #TEFF
+      plot.tx = plot.t[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
+      order.t <- order(plot.tx)  #Puts LOGG of order x, into LOGG order.
+      plot(plot.t,plot.y,pch = 16,col = rgb(0,0,0,0.25),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given TEFF of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      lines(plot.tx[order.t],y[order.t],col='red',lwd=3)
+      lines(plot.tx[order.t],y.1[order.t],col='blue',lwd=3) 
+      lines(plot.tx[order.t],y.3[order.t],col='blue',lwd=3)
+      points(plot.t,plot.y,pch = 16,col = rgb(0,0,0,0.25))
       
       
-      plot(plot.l,plot.y,
+      #LOGG
+      plot.lx = plot.l[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
+      order.l <- order(plot.lx)  #Puts LOGG of order x, into LOGG order.
+      plot(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25),
            main=paste0(each.node,' - ',each.setup),xlab=paste0('Given LOGG of Benchmarks (per spectrum)'),
            ylab=paste0('Delta ',variable,' Observed - Bench'))
-      plot.lx = plot.l[order.x]
-      order.l <- order(plot.lx)
       lines(plot.lx[order.l],y[order.l],col='red',lwd=3)
       lines(plot.lx[order.l],y.1[order.l],col='blue',lwd=3) 
       lines(plot.lx[order.l],y.3[order.l],col='blue',lwd=3)
+      points(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25))
       
-      plot(plot.f,plot.y,
-           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given FEH of Benchmarks (per spectrum)'),
-           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      #FEH
       plot.fx = plot.f[order.x]
       order.f <- order(plot.fx)
+      plot(plot.f,plot.y,pch = 16,col = rgb(0,0,0,0.5),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given FEH of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      
       lines(plot.fx[order.f],y[order.f],col='red',lwd=3)
       lines(plot.fx[order.f],y.1[order.f],col='blue',lwd=3) 
       lines(plot.fx[order.f],y.3[order.f],col='blue',lwd=3)
       
-      plot(plot.s,plot.y,pch = 16,col = rgb(0,0,0,0.05),
+      #SNR
+      plot(plot.s,plot.y,pch = 16,col = rgb(0,0,0,0.5),
            main=paste0(each.node,' - ',each.setup),xlab=paste0('Measured SNR (per spectrum)'),
            ylab=paste0('Delta ',variable,' Observed - Bench'))
       
@@ -791,7 +814,7 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       #lines(plot.tx[order.t],y.1[order.t],col='blue',lwd=3) 
       #lines(plot.tx[order.t],y.3[order.t],col='blue',lwd=3)
       
-      #par(mfrow=c(1,1))
+      par(mfrow=c(1,1))
       
     }
   }

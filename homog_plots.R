@@ -446,7 +446,7 @@ correct.iacmp.grid <- function(in.nodes.param) {
 
 find.outliers <- function(in.nodes.param) {
   list.param <- c('TEFF','LOGG','FEH')
-  limits.param <- c(50000,50,50)
+  limits.param <- c(500000,50,50)
   final.filter <- array(FALSE,c(dim(in.nodes.param)[1],dim(in.nodes.param)[2],3))
   for (each.param in list.param) {
     param.col <- which(dimnames(in.nodes.param[,,])[[3]] == each.param)
@@ -490,6 +490,81 @@ apply.filter.outliers <- function(in.nodes.param,filter.outliers) {
   }
   return(in.nodes.param)
 }
+
+#######################################
+#
+# Find outlier results compared to Accepted Values (WG11 xmat)
+#
+# Right now flags maximum 1 Node per star, if at the same time Teff,logg AND Fe/H are different by more than 500 K or 0.5 dex in logg, 
+# OR 0.5 dex in FEH from the MEAN
+
+find.outliers.accepted <- function(in.nodes.param,metadata.nodes.param,in.bench.param) {
+  list.param <- c('TEFF','LOGG','FEH')
+  limits.param <- c(500,50,50)
+  final.filter <- array(FALSE,c(dim(in.nodes.param)[1],dim(in.nodes.param)[2],3))
+  for (each.param in list.param) {
+    param.col <- which(dimnames(in.nodes.param[,,])[[3]] == each.param)
+    param.as.numbers <- as.data.frame(in.nodes.param[,,param.col])
+    param.as.numbers <- apply(param.as.numbers,2,as.numeric)
+    
+    if ("TEFF" %in% each.param) {
+      bench.param.col <- in.bench.param$TEFF
+    } else if ("LOGG" %in% each.param) {
+      bench.param.col <- in.bench.param$LOGG
+    } else if ("FEH" %in% each.param) {
+      bench.param.col <- in.bench.param$FEH
+    }
+    
+    # Find value of Accepted Star - match on CNAME
+    mean.param <- vector('numeric',length=nrow(in.nodes.param))
+    for (ik in seq(1,nrow(in.nodes.param))) {
+      mean.param[ik] <- bench.param.col[which(in.bench.param$ID1 == metadata.nodes.param$CNAME[ik])]
+      #print(which(in.bench.param$ID1 == metadata.nodes.param$CNAME[ik]))
+      #print(bench.param.col[which(in.bench.param$ID1 == metadata.nodes.param$CNAME[ik])])
+      #star.code[ik] <- which(bench.param$GES_FLD == metadata.of.bench.spectra$GES_FLD[ik])
+    }
+    
+    #mean.param <- apply(param.as.numbers,1,mean,na.rm=TRUE)
+    #sd.param <- apply(param.as.numbers,1,sd,na.rm=TRUE)
+    diff.to.mean <- abs(param.as.numbers-mean.param)
+    #print(diff.to.mean[350:700,])
+    max.per.star <- apply(diff.to.mean,1,max,na.rm=TRUE)
+    #
+    filter.max.inf <- !is.infinite(max.per.star)
+    #filter.max <- (diff.to.mean == max.per.star)
+    comb.filter.max <- filter.max.inf #& filter.max 
+    #
+    filter.diff <- (diff.to.mean >= limits.param[(param.col+1)/2])
+    # sometimes there are many nodes that disagree with the mean (like for GJ205, 5 nodes disagreed with the mean, and the mean is wrong anyway...)        
+    # so we will limit for the cases where there is only one clear Node-outlier
+    # sum.diff <- apply(filter.diff,1,sum,na.rm=TRUE)
+    new.filter.diff <- (filter.diff) # & (sum.diff == 1)
+    #
+    comb.filter <- (comb.filter.max & new.filter.diff)
+    na.comb.filter <- is.na(comb.filter)
+    final.filter[,,(param.col+1)/2] <- !na.comb.filter & comb.filter   
+  }
+  
+  out.filter <- final.filter[,,1] | final.filter[,,2] | final.filter[,,3] 
+  return(out.filter)
+}
+
+#apply.filter.outliers <- functioFITn(in.nodes.param,filter.outliers) {
+#  list.nodes <- dimnames(in.nodes.param)[[2]]
+#  list.param <- dimnames(in.nodes.param)[[3]]
+#  for (each.node in list.nodes) {
+#    node.col <- which(dimnames(in.nodes.param[,,])[[2]] == each.node)
+#    filter.col <- filter.outliers[,node.col]
+#    ik <- 1
+#    while (ik <= dim(in.nodes.param)[[3]]) {
+#      in.nodes.param[filter.col,node.col,ik] <- "NaN"
+#      ik <- ik+1
+#    }
+#  }
+#  return(in.nodes.param)
+#}
+
+
 #######################################
 #
 # Read the reference parameters of the benchmark stars
