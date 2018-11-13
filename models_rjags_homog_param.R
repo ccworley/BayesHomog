@@ -919,6 +919,11 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
     bias.param <- alpha1 + alpha2 * renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]] + alpha3 * ((renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]])^2)
     mean.biases[spectrum.not.missing[j],node.not.missing[j]] <- round(mean(bias.param*sd.bench.param),digits=round.to.this)
     sd.biases[spectrum.not.missing[j],node.not.missing[j]]   <- round(sd(bias.param*sd.bench.param),digits=round.to.this)
+    if (sd.biases[spectrum.not.missing[j],node.not.missing[j]] == 0) {
+      #print(sd(bias.param*sd.bench.param)) - not rounded
+      #print(sd.biases[spectrum.not.missing[j],node.not.missing[j]]) - rounded
+      sd.biases[spectrum.not.missing[j],node.not.missing[j]]   <- 0.01
+    }
   }
  
   all.data <- list(full.sample.param,tot.num.stars,tot.num.spectra,star.code.not.missing,spectrum.not.missing,node.not.missing,tot.num.not.missing,
