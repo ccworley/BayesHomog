@@ -14,7 +14,7 @@ library(FITSio);library(stringr);library(gplots);library(robustbase);library(MAS
 
 # DEFINITIONS
 release <- c('iDR6')
-list.nodes <- c('Lumba','EPINARBO','IAC','OACT','MaxPlanck')
+list.nodes <- c('Lumba','EPINARBO','IAC','OACT','MaxPlanck','IACb','MaxPlanckb')
 node.template.file <- c('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/FITSFiles/iDR6/FITSFiles/NodeTemplate/GES_iDR6_WG10_NodeTemplate_14062018_plus2ndExt.fits')
 node.files.path <- c('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/FITSFiles/iDR6/FITSFiles/')
 
@@ -26,7 +26,7 @@ source('homog_plots.R')
 # nodes.param <- out.list[[2]]
 # nodes.ids <- as.data.frame(out.list[[1]])
 # nodes.flags <-  out.list[[3]]
-#rm(out.list)
+# rm(out.list)[]
 
 #Data set of all setups and nodes
 # nodes.param.all <- nodes.param
@@ -41,13 +41,13 @@ nodes.ids <- nodes.ids.all
 
 
 # Restrict to one setup for the moment
-anasetup = "HR15N"   #"HR9B"
+anasetup = "HR15N"       #"HR10|HR21"    #"HR9B"
 if ("HR15N" %in% anasetup) {
-  list.nodes <- c('Lumba','OACT','EPINARBO')  #,'MaxPlanck')
+  list.nodes <- c('Lumba','OACT','EPINARBO','MaxPlanck')
 } else if ("HR9B" %in% anasetup) {
   list.nodes <- c('OACT','EPINARBO')
 } else if ("HR10|HR21" %in% anasetup) {
-  list.nodes <- c('Lumba','IAC')
+  list.nodes <- c('Lumba','IAC','IACb','MaxPlanckb')
 } else if ("HR21" %in%anasetup) {
   list.nodes <- c('Lumba','IAC','MaxPlanck')
 } else if ("HR10" %in% anasetup) {
@@ -78,10 +78,22 @@ rm(nodes.only.flags)
 
 # Based on the list produced above, and looking at the flags meaning from WG14 dictionary, below are the flags that mark results that should be ignored:
 # List of flags to ignore for iDR6 - if these appear, all node results are excluded
-flags.to.ignore.allnodes <- c("10005", "10106", "10108", "20020", "20030", "20040", "20070", "25000")
-
+# WG11 Flags applied across nodes (maybe deleted some preiously to this...check against RS)
+# flags.to.ignore.allnodes <- c("10005", "10106", "10108", "20020", "20030", "20040", "20070", "25000")
 # 10005 SNR<5; 10106 broken spectrum (picket fence...); 10108 leaking from simcal causing spurious emission features; 
 # 10320 suspected multiple system; 11100,11150,11200,11250 vsini>100,150,200,250, 13027 suspicious parameter multiple system, 200N0 SBN; 
+# 25000 Halpha in emission
+# NOTE: Confidence level is ignored
+
+# WG10 relevant flags
+flags.to.ignore.allnodes <- c("10106","11100","11150","11200","11250","13027","13028","20020","20030","20070","25000")
+#alltechflag = ['10106','11100','11150','11200','11250','13028']  ;Reject all node results based on these flags
+#allpecflag = ['20020','20030','20070','25000']  ;Reject all node results based on these flags
+
+# 10106 broken spectrum (picket fence...); 
+# 10320 suspected multiple system; 11100,11150,11200,11250 vsini>100,150,200,250,
+# 13027,13028 suspicious parameter multiple system,
+# 200N0 SBN; 
 # 25000 Halpha in emission
 # NOTE: Confidence level is ignored
 
@@ -89,29 +101,48 @@ flags.to.ignore.allnodes <- c("10005", "10106", "10108", "20020", "20030", "2004
 # For IDR6
 # These flags, if found, exclude only the results of node that used the flag
 
-flags.to.ignore.specific <- c("10015","10303","10304","10305","11100","11200","13022", # EPINARBO
-                              "10015","10050","10302","10308","13020","13021","13022", # LUMBA
-                              "10015","10020","10303","11100","11150","11200","13020","13022", # OACT
+# Rejects ALL SNR flags (Some of these equate to NULL parameters anyway)
+# flags.to.ignore.specific <- c("10010","10015","10303","10304","10305","11100","11200","13022", # EPINARBO
+#                               "10015","10050","10302","10308","13020","13021","13022", # LUMBA
+#                               "10015","10020","10303","11100","11150","11200","13020","13022", # OACT
+#                               "10302", #IAC
+#                               "10020","10303","10305") # MaxPlanck
+
+# Keeps parameters on SNR flags  (Some of these equate to NULL parameters anyway)
+flags.to.ignore.specific <- c("10302","10303","10304","10305","11020","13022", # EPINARBO
+                              "10302","10308","13020","13021","13022", # LUMBA
+                              "10303","13020","13022", # OACT
                               "10302", #IAC
-                              "10020","10303","10305") # MaxPlanck
+                              "10303","10305","10399") # MaxPlanck
+
+
+
+# ;Reject specific node results based on these flags (Some of these equate to NULL parameters anyway)
+# epiflag = ['10302','10303','10304','10305','11020','13022'] ; EPINARBO  ;Keep = '10010','10015','10104','10155','10210','25500'
+# lumflag = ['10302','10308','13020','13021','13022'] ; LUMBA ; Keep = '10015','10050','10153',
+# oacflag = ['10303','13020','13022'] ; OACT ; Keep = '10015','10020'
+# iacflag = ['10302']  ; IAC
+# maxflag = ['10303','10305','10399']  ; MaxPlanck  ; Keep = '10020',
+
 
 
 # EPINARBO: 10015 inaccurate result because of SNR; 10303, 10304, 10305, code convergence issues; 11100,11200 vsini issues; 13022, 13027 suspicious parameter
 #      IAC: 10302 no convergence - no parameters given 
 #    Lumba: 10015 10050 inaccurate result because of SNR; 10302 code convergence; 13020 13021 13022 suspicious stellar parameters
 #     OACT: 10015,10020 inaccurate result because of SNR; 10303 code convergence; 11100,11150,11200 vsini>100,150,200; 13020,13022 suspicious parameter grid edge
-#MaxPlanck: 10005,10010 SNR<5,10; 10302,10303 code convergence
+#MaxPlanck: 10020 SNR<20; 10302,10303 code convergence,  10399 ran out of time flag
 
 # Remove the flagged results
 list.flag.corrected <- eliminate.flagged.dr5(nodes.param,nodes.flags,flags.to.ignore.allnodes,flags.to.ignore.specific)
 correc.flags.nodes.param <- list.flag.corrected[[1]]
+recom.flags <- list.flag.corrected[[2]]
 print(sum(is.na(match(nodes.param[,,"TEFF"],"NaN"))))
+
 #Check numbers when Flags are NaNned match AGs report - yes for HR15N
 print(sum(is.na(match(correc.flags.nodes.param[,,"TEFF"],"NaN"))))
-print(sum(is.na(match(correc.flags.nodes.param[,'Lumba',"TEFF"],"NaN"))))
-print(sum(is.na(match(correc.flags.nodes.param[,'EPINARBO',"TEFF"],"NaN"))))
-print(sum(is.na(match(correc.flags.nodes.param[,'OACT',"TEFF"],"NaN"))))
-recom.flags <- list.flag.corrected[[2]]
+for (each.node in list.nodes) {
+  print(sum(is.na(match(correc.flags.nodes.param[,each.node,"TEFF"],"NaN"))))
+}
 
 # Remove weird results of IAC and MaxPlanck
 correc.nodes.param <- correct.iacmp.grid(correc.flags.nodes.param)
@@ -237,9 +268,14 @@ num.spectra <- nrow(metadata.of.bench.spectra) # Total number of spectra of benc
 # Commented because parametrisation with SNR did not work so this is not needed
 #Qant to check delta with snr
 snr.spec.vec <- create.snr.vector(snr.data=metadata.of.bench.spectra$SNR)
+#Create mean snr with bench.param vector
+mean.bench.snr <- vector('numeric',length=length(bench.param$ID1))
+for (ik in seq(1,length(bench.param$GES_FLD))) {
+  mean.bench.snr[ik] <- min(snr.spec.vec[which(bench.param$ID1 == metadata.of.bench.spectra$CNAME[ik])])
+}
+
 
 # 3) Create the vectors with the given reference parameters
-
 given.teff.bench <- bench.param$TEFF
 given.sigma.teff.bench <- bench.param$E_TEFF
 given.logg.bench <- bench.param$LOGG
@@ -433,13 +469,13 @@ model.for.teff <- run.the.reference.model(input.data=teff.data,the.model=model.t
                                           size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.teff.bench","alpha","teff.Rho","node.sd.teff"),
                                           model.inits=list.inits.teff)
 
-#model.for.logg <- run.the.reference.model(input.data=logg.data,the.model=model.logg.matrix.bias,num.chains=num.chains.for.logg,num.adapt=1000,num.bur=1000,
-#                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.logg.bench","alpha","logg.Rho","node.sd.logg"),
-#                                          model.inits=list.inits.logg)
+model.for.logg <- run.the.reference.model(input.data=logg.data,the.model=model.logg.matrix.bias,num.chains=num.chains.for.logg,num.adapt=1000,num.bur=1000,
+                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.logg.bench","alpha","logg.Rho","node.sd.logg"),
+                                          model.inits=list.inits.logg)
 
-#model.for.feh <- run.the.reference.model(input.data=feh.data,the.model=model.feh.matrix.bias,num.chains=num.chains.for.feh,num.adapt=1000,num.bur=1000,
-#                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.feh.bench","alpha","feh.Rho","node.sd.feh"),
-#                                          model.inits=list.inits.feh)
+model.for.feh <- run.the.reference.model(input.data=feh.data,the.model=model.feh.matrix.bias,num.chains=num.chains.for.feh,num.adapt=1000,num.bur=1000,
+                                          size.sample=1000,thin.factor=1,variables.to.monitor=c("the.true.feh.bench","alpha","feh.Rho","node.sd.feh"),
+                                          model.inits=list.inits.feh)
 
 
 #
@@ -454,9 +490,9 @@ corr.diag.of.variable(model.for.teff,variable=c('alpha'))
 #corr.diag.of.variable(model.for.logg,variable=c('alpha'))
 #corr.diag.of.variable(model.for.feh,variable=c('alpha'))
 
-plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param)
-#plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param)
-#plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param)
+plot.against.reference.bench(model.for.teff,c('TEFF'),bench.param,mean.bench.snr)
+plot.against.reference.bench(model.for.logg,c('LOGG'),bench.param,mean.bench.snr)
+plot.against.reference.bench(model.for.feh,c('FEH'),corr.bench.param,mean.bench.snr)
 
 
 look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
@@ -464,15 +500,15 @@ look.at.node.bias.functions(the.model=model.for.teff,variable=c('TEFF'),bench.da
                             nodes=list.nodes,mean.param.bench=mean(given.teff.bench,na.rm=T),sd.param.bench=sd(given.teff.bench,na.rm=T),
                             observed.snr=snr.spec.vec)
 
-#look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.data=bench.param,observed.data=observed.node.logg.spectrum,
-#                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
-#                            nodes=list.nodes,mean.param.bench=mean(given.logg.bench,na.rm=T),sd.param.bench=sd(given.logg.bench,na.rm=T),
-#                            observed.snr=snr.spec.vec)
+look.at.node.bias.functions(the.model=model.for.logg,variable=c('LOGG'),bench.data=bench.param,observed.data=observed.node.logg.spectrum,
+                            the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
+                            nodes=list.nodes,mean.param.bench=mean(given.logg.bench,na.rm=T),sd.param.bench=sd(given.logg.bench,na.rm=T),
+                            observed.snr=snr.spec.vec)
 
-#look.at.node.bias.functions(the.model=model.for.feh,variable=c('FEH'),bench.data=corr.bench.param,observed.data=corr.observed.node.feh.spectrum,
-#                            the.setups=corr.vector.of.setups,the.stars=corr.star.code,col.of.setups=corr.metadata.of.bench.spectra$SETUP,
-#                            nodes=list.nodes,mean.param.bench=mean(given.feh.bench,na.rm=T),sd.param.bench=sd(given.feh.bench,na.rm=T),
-#                            observed.snr=corr.snr.spec.vec)
+look.at.node.bias.functions(the.model=model.for.feh,variable=c('FEH'),bench.data=corr.bench.param,observed.data=corr.observed.node.feh.spectrum,
+                            the.setups=corr.vector.of.setups,the.stars=corr.star.code,col.of.setups=corr.metadata.of.bench.spectra$SETUP,
+                            nodes=list.nodes,mean.param.bench=mean(given.feh.bench,na.rm=T),sd.param.bench=sd(given.feh.bench,na.rm=T),
+                            observed.snr=corr.snr.spec.vec)
   
 stop('Reference Models done')
 # Save the models for future use
