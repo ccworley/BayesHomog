@@ -679,7 +679,7 @@ corr.diag.of.variable <- function(the.model,variable=c('alpha')) {
 ############################################
 # Function to plot the homogenised parameters against the reference parameters
 
-plot.against.reference.bench <- function(the.model,variable=c('TEFF'),bench.data=bench.param) {
+plot.against.reference.bench <- function(the.model,variable=c('TEFF'),bench.data=bench.param,observed.snr=mean.bench.snr) {
 
   variable <- str_trim(variable)
   if (length(variable) != 1) { stop(paste('Choose one variable at a time from TEFF or LOGG or FEH')) }
@@ -687,14 +687,16 @@ plot.against.reference.bench <- function(the.model,variable=c('TEFF'),bench.data
 
   test <- summary(the.model,vars=c('the.true'))
   the.col <- which(colnames(bench.data) == variable)
-  par(mfrow=c(1,3))
+  par(mfrow=c(2,2))
   
   plot(bench.data$TEFF,(bench.data[,the.col]-test[,4]),main=variable,xlab=paste0('Given TEFF of Benchmarks'),ylab=paste0('Delta ',variable,' (given minus homog)'))
   
   plot(bench.data$LOGG,(bench.data[,the.col]-test[,4]),main=variable,xlab='Given LOGG of Benchmarks',ylab=paste0('Delta ',variable,' (given minus homog)'))
   
   plot(bench.data$FEH,(bench.data[,the.col]-test[,4]),main=variable,xlab='Given FEH of Benchmarks',ylab=paste0('Delta ',variable,' (given minus homog)'))
-  par(mfrow=c(1,1))
+
+  plot(observed.snr,(bench.data[,the.col]-test[,4]),main=variable,xlab='Observed SNR',ylab=paste0('Delta ',variable,' (given minus homog)'))
+    par(mfrow=c(1,1))
   
 }
 
@@ -720,7 +722,8 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
     num.of.node <- which(nodes == each.node)
     for (each.setup in list.of.setups) {
       num.setup <- which(list.of.setups == each.setup)
-      
+      print(each.node)
+      print(each.setup)
       plot.x <- bench.data[the.stars[the.setups == num.setup],this.bench.col]
       plot.y <- (observed.data[(the.setups == num.setup),num.of.node]-plot.x)
       plot.s <- observed.snr[(the.setups == num.setup),num.of.node]
@@ -737,7 +740,7 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       }
       
       
-      par(mfrow=c(1,4))
+      par(mfrow=c(2,2))
       
       #X
       #plot(plot.x,plot.y,pch = 16,col = rgb(0,0,0,0.5),
@@ -770,6 +773,10 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       #lines(x,y.3,col='blue',lwd=3)
 
       #TEFF
+      print('teff')
+      str(plot.t)
+      print(length(plot.t))
+      print(length(plot.y))
       plot.tx = plot.t[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
       order.t <- order(plot.tx)  #Puts LOGG of order x, into LOGG order.
       plot(plot.t,plot.y,pch = 16,col = rgb(0,0,0,0.25),
@@ -782,6 +789,7 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       
       
       #LOGG
+      print('logg')
       plot.lx = plot.l[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
       order.l <- order(plot.lx)  #Puts LOGG of order x, into LOGG order.
       plot(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25),
@@ -793,6 +801,7 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
       points(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25))
       
       #FEH
+      print('feh')
       plot.fx = plot.f[order.x]
       order.f <- order(plot.fx)
       plot(plot.f,plot.y,pch = 16,col = rgb(0,0,0,0.5),
