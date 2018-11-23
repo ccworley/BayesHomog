@@ -85,8 +85,8 @@ correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code
   
   corr.star.code <- vector('numeric',length=nrow(corr.observed.node.feh.spectrum))
   for (ik in seq(1,nrow(corr.observed.node.feh.spectrum))) {
-    #corr.star.code[ik] <- which(corr.bench.param$ID1 == corr.metadata.of.bench.spectra$CNAME[ik])
-    corr.star.code[ik] <- which(corr.bench.param$GES_FLD == corr.metadata.of.bench.spectra$GES_FLD[ik])
+    corr.star.code[ik] <- which(corr.bench.param$ID1 == corr.metadata.of.bench.spectra$CNAME[ik])
+    #corr.star.code[ik] <- which(corr.bench.param$GES_FLD == corr.metadata.of.bench.spectra$GES_FLD[ik])
   }
   
   corr.given.feh.bench <- bench.data$FEH[bench.with.feh]
@@ -96,6 +96,85 @@ correct.data.for.feh <- function(bench.data=bench.param,orig.star.code=star.code
   all.data <- list(corr.bench.param,corr.metadata.of.bench.spectra,corr.observed.node.feh.spectrum,corr.star.code,corr.given.feh.bench,corr.given.sigma.feh.bench,positions.with.feh,corr.observed.snr)
   return(all.data)
 }
+
+############################################
+# Function to create the "manipulated" version of TEFF and LOGG and FEH data
+
+create.manipulated.teff.logg.feh <- function(observed.teff=observed.node.teff.spectrum,observed.logg=observed.node.logg.spectrum,observed.feh=observed.node.feh.spectrum,bench.data=bench.param,the.stars=star.code) {
+  # What we are trying to do boils down to inferring "sigma" given that a node measured "x[i]" and knowing that the real values were "y[i]" for each star "i", or in R jags notation: x[i] ~ dnorm ( mu = y[i] , tau = 1/sigma^2 ); but it happens that sometimes x[i] is missing because the node failed to analyse that star. What I would like to do is, in these cases of missing measurement, simply assume a broad non informative prior for the missing x[i]: x[i] ~ dunif(3000,8000); in other words: ok, the node did not provide a measurement, but I know the value should be between 3000 and 8000 K. **BUT**, I can not write these two lines of code together: x[i] ~ dnorm ( mu = y[i] , tau = 1/sigma^2 ) and x[i] ~ dunif(3000,8000) because JAGS correctly thinks that I am trying to define the same "node" x[i] twice and throws an error. On the other hand, JAGS knows how to deal with the situation where it is "y[i]" that has the missing values. If we write x[i] ~ dnorm ( mu = y[i] , tau = 1/sigma^2 ) and y[i] ~ dunif(3000,9000) it automatically knows that it should treat **ONLY** the missing values of y[i] with the non-informative priors (really! I tested it. If y = c(1,2,NA,3,4), with the y[i] ~ dunif(3000,9000) it will substitute only the third element of y for the prior, the rest remains unchanged.
+  # So, what is the numerical solution for this? I am proposing the following trick where the values to be randomized are inverted. Let's say that the measured values are x = c(1.1,1.9,NA,4.2,4.8,6.3) and the true values are y = c(1,2,3,4,5,6) and I want to infer the sigma as before in x[i] ~ dnorm ( mu = y[i] , tau = 1/sigma^2 ). I would like to treat the missing value with a prior x[i] ~ dunif (0,10), but as I said, this can not be done directly. So, what I do is, I manipulate x and y by taking out the NA from "x" and inputing there the corresponding true value; and removing the corresponding true value from y and inputing there the NA: new.x = c(1.1,1.9,3,4.2,4.8,6.3) and new.y = c(1,2,NA,4,5,6) telling JAGS that when it sees the NA in new.y it should use new.y ~ dunif(0,10). So, instead of randomizing the measured value, I am randomizing the true value. In essence, I think the two formulations are equivalent in what concerns the determination of the "sigma" that we are interested in. Before, I was trying to say that when the node measured y[3], it got a random value x[3] between 0 and 10. Now, what I am saying that it measured x[3] out of a random value of y[3] between 0 and 10.
+  # This is the new matrix without missing values, where the NAs and NaNs where substituted by the reference benchmak values
+  
+  manipulated.node.teff.spectrum <- matrix(NA,ncol=ncol(observed.teff),nrow=nrow(observed.teff))
+  manipulated.node.logg.spectrum <- matrix(NA,ncol=ncol(observed.logg),nrow=nrow(observed.logg))
+  manipulated.node.feh.spectrum <- matrix(NA,ncol=ncol(observed.feh),nrow=nrow(observed.feh))
+  
+  # And I also need to save the position (i,j) in the matrix of each element that was changed from NA to a value, those that were not changed, and the star.code of the changed values. (Perhaps there is a better and less verbose way to do this, but this was the solution I could come up with)
+  i.of.missing.teff <- vector()
+  j.of.missing.teff <- vector()
+  i.not.missing.teff <- vector()
+  j.not.missing.teff <- vector()
+  code.bench.missing <- vector()     # The star.code of the benchmark for which the measurement was missing
+  code.bench.not.missing <- vector() # The star.code of the benchmark for which measurements were not missing
+  keep.track.of.missing <- matrix(NA,nrow=nrow(observed.teff),ncol=ncol(observed.teff))
+  
+  ik <- 1
+  jk <- 1
+  for (i in seq(1,nrow(observed.teff))) {
+    for (j in seq(1,ncol(observed.teff))) {
+      if (is.na(observed.teff[i,j])) {
+        manipulated.node.teff.spectrum[i,j] <- bench.data$TEFF[the.stars[i]]
+        manipulated.node.logg.spectrum[i,j] <- bench.data$LOGG[the.stars[i]]
+        manipulated.node.feh.spectrum[i,j] <- bench.data$FEH[the.stars[i]]
+        i.of.missing.teff[ik] <- i
+        j.of.missing.teff[ik] <- j
+        code.bench.missing[ik] <- the.stars[i]
+        keep.track.of.missing[i,j] <- 2
+        ik <- ik+1
+      } else {
+        if (is.na(observed.logg[i,j])) {
+          manipulated.node.teff.spectrum[i,j] <- bench.data$TEFF[the.stars[i]]
+          manipulated.node.logg.spectrum[i,j] <- bench.data$LOGG[the.stars[i]]
+          manipulated.node.feh.spectrum[i,j] <- bench.data$FEH[the.stars[i]]
+          i.of.missing.teff[ik] <- i
+          j.of.missing.teff[ik] <- j
+          code.bench.missing[ik] <- the.stars[i]
+          keep.track.of.missing[i,j] <- 2
+          ik <- ik+1
+        } else {      
+          if (is.na(observed.feh[i,j])) {
+            manipulated.node.teff.spectrum[i,j] <- bench.data$TEFF[the.stars[i]]
+            manipulated.node.logg.spectrum[i,j] <- bench.data$LOGG[the.stars[i]]
+            manipulated.node.feh.spectrum[i,j] <- bench.data$FEH[the.stars[i]]
+            i.of.missing.teff[ik] <- i
+            j.of.missing.teff[ik] <- j
+            code.bench.missing[ik] <- the.stars[i]
+            keep.track.of.missing[i,j] <- 2
+            ik <- ik+1
+          } else {      
+            manipulated.node.teff.spectrum[i,j] <- observed.teff[i,j]
+            manipulated.node.logg.spectrum[i,j] <- observed.logg[i,j]
+            manipulated.node.feh.spectrum[i,j] <- observed.feh[i,j]
+            i.not.missing.teff[jk] <- i
+            j.not.missing.teff[jk] <- j
+            code.bench.not.missing[jk] <- the.stars[i]
+            keep.track.of.missing[i,j] <- 1
+            jk <- jk+1
+          }
+        }
+      }
+    }
+  }
+  
+  num.missing.values <- ik-1     # save the total number of missing entries
+  num.not.missing.values <- jk-1 # save the total number of non-missing entries
+  
+  all.data <- list(manipulated.node.teff.spectrum,manipulated.node.logg.spectrum,manipulated.node.feh.spectrum,i.of.missing.teff,j.of.missing.teff,i.not.missing.teff,
+                   j.not.missing.teff,code.bench.missing,code.bench.not.missing,keep.track.of.missing,num.missing.values,num.not.missing.values)
+  return(all.data)
+  
+}
+
 
 ############################################
 # Function to create the "manipulated" version of TEFF and LOGG data
@@ -274,9 +353,7 @@ for (i in 1:N) { # Running over N which is the num.bench
 # true.teff.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
 
 for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
-
     true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff.bench[code.bench.not.missing[i]]
-
 }
 
 #Prior on the missing values
@@ -284,7 +361,6 @@ for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we in
 for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
 
     true.teff.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(3000,8000) #dnorm(offset.teff,scale.teff) I(3000,8000)
-
 }
 
 # Prior on the teff.InvCovMat
@@ -296,7 +372,7 @@ teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
 #for (i in 1:2) { # For missing and non-missing values
     for (l in 1:K) {       # On number of nodes
        for (m in 1:P) {    # On number of setups
-          for (j in 1:3) { # 3 coefficients needed for fitting a quadratic function
+          for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function to 1 parameter
               alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
            }
         }
@@ -305,10 +381,11 @@ teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
 
 # I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
 
-for (i in 1:M) {
+for (i in 1:M) {  #M=num.spectra, K=num.nodes
    for (j in 1:K) {
         only.the.true.teff.benchmark[i,j] <- (given.teff.benchmarks[star.code[i]]-offset.teff)/scale.teff
        #only.the.true.teff.benchmark[i,j] <- the.true.teff.bench[star.code[i]]
+
    }
 }
 
@@ -317,12 +394,12 @@ for (i in 1:M) {
 
 #Likelihood - per spectrum (vectorized over K = num.nodes)
 
-for (j in 1:M) {
+for (j in 1:M) {    #M=num.spectra, K=num.nodes
 #Fitting the true value
-    observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[1:K,1:K] )
+  observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[1:K,1:K] )
 
-#Bias function as a quadratic function of Teff    
-    norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) 
+  #Based on TEFF only -> ncoeff = 3 coefficients    
+  norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) 
 
 }
 
@@ -339,7 +416,231 @@ for (j in 1:M) {
   for ( varIdx1 in 1:K ) {
        for ( varIdx2 in 1:K ) {
            teff.Rho[varIdx1,varIdx2] <- ( teff.CovMat[varIdx1,varIdx2] / (node.sd.teff[varIdx1]*node.sd.teff[varIdx2]) )
+    }
   }
+
+}"
+
+########################################
+# TEFF MODEL with LOGG FOR BENCHMARKS
+
+model.teff.logg.matrix.bias <- "model{
+# We set up the model to use multivariate normal distributions. For a given spectrum of the benchmarks, the vector of Teff measured by the nodes teff.nodes.vector = (Teff1, Teff2,...,Teffn) is a random drawing from a multivariate normal distribution with a mean = vector of true.teff of that benchmark (true.teff, true.teff,...,true.teff) - where obviously the true.teff is the same irrespective of node - and there is a covariance matrix (JAGS expects the inverse covariance matrix actually): teff.nodes.vector ~ dmnorm ( mu = true.teff.vector, InvCovMatrix ). So we need to first set up all vectors accordingly.
+
+# 1)
+# This first part is to define the vector with TRUE values of the benchmark Teff
+# We do not use the given Teff value directly, but use the given value as a prior for the true value
+
+# Prior on the true Teff of the benchmarks
+for (i in 1:N) { # Running over N which is the num.bench
+
+the.true.teff.bench[i] ~ dnorm(given.teff.benchmarks[i], given.tau.teff.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+given.tau.teff.bench[i] <- pow(given.error.teff.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+the.true.logg.bench[i] ~ dnorm(given.logg.benchmarks[i], given.tau.logg.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+given.tau.logg.bench[i] <- pow(given.error.logg.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+#the.true.feh.bench[i] ~ dnorm(given.feh.benchmarks[i], given.tau.feh.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+#given.tau.feh.bench[i] <- pow(given.error.feh.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+}
+
+# Now we will create the vector of true Teffs: vector.true.teff = (true.teff, ..., true.teff)
+# Here we have to remember that we use directly true.teff only when the node provided a measurement. If the value was missing, we actually use a broad non-informative prior to simulate that the value of the node measurement was unknown. This means that the actual vector.true.teffs is not one per benchmark, but one per spectrum! Because for each spectrum there is a different number of node values missing.
+
+# true.teff.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
+
+for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
+
+true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff.bench[code.bench.not.missing[i]]
+true.logg.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.logg.bench[code.bench.not.missing[i]]
+#true.feh.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.feh.bench[code.bench.not.missing[i]]
+
+}
+
+#Prior on the missing values
+
+for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
+
+true.teff.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(3000,8000) #dnorm(offset.teff,scale.teff) I(3000,8000)
+true.logg.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(0,6)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+#true.feh.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(-3.5,0.5)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+
+}
+
+# Prior on the teff.InvCovMat
+
+teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
+
+# Other Priors needed for coefficients
+# Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
+#for (i in 1:2) { # For missing and non-missing values
+for (l in 1:K) {       # On number of nodes
+for (m in 1:P) {    # On number of setups
+for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function to 1 parameter
+alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
+}
+}
+}
+#}
+
+# I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
+
+for (i in 1:M) {  #M=num.spectra, K=num.nodes
+for (j in 1:K) {
+only.the.true.teff.benchmark[i,j] <- (given.teff.benchmarks[star.code[i]]-offset.teff)/scale.teff
+#only.the.true.teff.benchmark[i,j] <- the.true.teff.bench[star.code[i]]
+
+only.the.true.logg.benchmark[i,j] <- (given.logg.benchmarks[star.code[i]]-offset.logg)/scale.logg
+#only.the.true.feh.benchmark[i,j] <- (given.feh.benchmarks[star.code[i]]-offset.feh)/scale.feh
+}
+}
+
+# 2)
+# Now, we finally write that what the nodes give is a noisy measurement of the true.teff.benchmark
+
+#Likelihood - per spectrum (vectorized over K = num.nodes)
+
+for (j in 1:M) {    #M=num.spectra, K=num.nodes
+#Fitting the true value
+observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[1:K,1:K] )
+
+#Based on TEFF only -> ncoeff = 3 coefficients    
+#norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) 
+
+#Based on TEFF & LOGG only -> ncoeff = 6 coefficients
+norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K]*only.the.true.logg.benchmark[j,1:K]
+
+}
+
+# Notice what was done with the bias function above. Let's assume, for example, that I know that everytime I measure the Teff of the Sun, my value comes out with a bias of +50 K. I could write that my measurement minus the bias was drawn from the normal distribution: (my.measurement - 50 K) ~ dnorm(mu = 5777 K, sigma = my.random.error). What I am assuming is that this is equivalent to say that I am instead drawing from a normal distribution with mu = 5827 K (5777 + 50): my.measurement ~ dnorm(mu = 5827 K + my.bias , sigma = my.random.error)
+
+# 3)
+# This is extra. Since the quantities I know how to understand are the sigmas and correlations out of the Covariance Matrix:
+# Convert teff.invCovMat to node.sd and correlations:
+
+teff.CovMat <- inverse( teff.InvCovMat )
+for ( varIdx in 1:K ) {
+node.sd.teff[varIdx] <- sqrt(teff.CovMat[varIdx,varIdx])
+}
+for ( varIdx1 in 1:K ) {
+for ( varIdx2 in 1:K ) {
+teff.Rho[varIdx1,varIdx2] <- ( teff.CovMat[varIdx1,varIdx2] / (node.sd.teff[varIdx1]*node.sd.teff[varIdx2]) )
+}
+}
+
+}"
+
+
+########################################
+# TEFF with FEH MODEL FOR BENCHMARKS
+
+model.teff.feh.matrix.bias <- "model{
+# We set up the model to use multivariate normal distributions. For a given spectrum of the benchmarks, the vector of Teff measured by the nodes teff.nodes.vector = (Teff1, Teff2,...,Teffn) is a random drawing from a multivariate normal distribution with a mean = vector of true.teff of that benchmark (true.teff, true.teff,...,true.teff) - where obviously the true.teff is the same irrespective of node - and there is a covariance matrix (JAGS expects the inverse covariance matrix actually): teff.nodes.vector ~ dmnorm ( mu = true.teff.vector, InvCovMatrix ). So we need to first set up all vectors accordingly.
+
+# 1)
+# This first part is to define the vector with TRUE values of the benchmark Teff
+# We do not use the given Teff value directly, but use the given value as a prior for the true value
+
+# Prior on the true Teff of the benchmarks
+for (i in 1:N) { # Running over N which is the num.bench
+
+  the.true.teff.bench[i] ~ dnorm(given.teff.benchmarks[i], given.tau.teff.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+  given.tau.teff.bench[i] <- pow(given.error.teff.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+  
+  #the.true.logg.bench[i] ~ dnorm(given.logg.benchmarks[i], given.tau.logg.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+  #given.tau.logg.bench[i] <- pow(given.error.logg.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+  
+  the.true.feh.bench[i] ~ dnorm(given.feh.benchmarks[i], given.tau.feh.bench[i])  # The given benchmark Teff value is a prior on the true value of the star's Teff
+  given.tau.feh.bench[i] <- pow(given.error.feh.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+}
+
+# Now we will create the vector of true Teffs: vector.true.teff = (true.teff, ..., true.teff)
+# Here we have to remember that we use directly true.teff only when the node provided a measurement. If the value was missing, we actually use a broad non-informative prior to simulate that the value of the node measurement was unknown. This means that the actual vector.true.teffs is not one per benchmark, but one per spectrum! Because for each spectrum there is a different number of node values missing.
+
+# true.teff.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
+
+for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
+
+  true.teff.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.teff.bench[code.bench.not.missing[i]]
+  #true.logg.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.logg.bench[code.bench.not.missing[i]]
+  true.feh.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.feh.bench[code.bench.not.missing[i]]
+
+}
+
+#Prior on the missing values
+
+for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
+
+  true.teff.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(3000,8000) #dnorm(offset.teff,scale.teff) I(3000,8000)
+  #true.logg.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(0,6)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+  true.feh.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(-3.5,0.5)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+
+}
+
+# Prior on the teff.InvCovMat
+
+teff.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
+
+# Other Priors needed for coefficients
+# Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
+#for (i in 1:2) { # For missing and non-missing values
+for (l in 1:K) {       # On number of nodes
+  for (m in 1:P) {    # On number of setups
+    for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function to 1 parameter
+      alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
+    }
+  }
+}
+#}
+
+# I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
+
+for (i in 1:M) {
+  for (j in 1:K) {
+    only.the.true.teff.benchmark[i,j] <- (given.teff.benchmarks[star.code[i]]-offset.teff)/scale.teff
+    #only.the.true.teff.benchmark[i,j] <- the.true.teff.bench[star.code[i]]
+    
+    #only.the.true.logg.benchmark[i,j] <- (given.logg.benchmarks[star.code[i]]-offset.logg)/scale.logg
+    only.the.true.feh.benchmark[i,j] <- (given.feh.benchmarks[star.code[i]]-offset.feh)/scale.feh
+  }
+}
+
+# 2)
+# Now, we finally write that what the nodes give is a noisy measurement of the true.teff.benchmark
+
+#Likelihood - per spectrum (vectorized over K = num.nodes)
+
+for (j in 1:M) {
+#Fitting the true value
+observed.node.teff.per.spec[j,1:K] ~ dmnorm( (true.teff.benchmark.per.spec[j,1:K] + (norm.bias.vector.teff.node[j,1:K]*scale.teff)) , teff.InvCovMat[1:K,1:K] )
+
+#Based on TEFF only -> ncoeff = 3 coefficients    
+#norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) 
+
+#Based on TEFF & LOGG only -> ncoeff = 6 coefficients
+#norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K]*only.the.true.logg.benchmark[j,1:K]
+
+#Based on TEFF & FEH only -> ncoeff = 6 coefficients
+norm.bias.vector.teff.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K]*only.the.true.feh.benchmark[j,1:K]
+
+}
+
+# Notice what was done with the bias function above. Let's assume, for example, that I know that everytime I measure the Teff of the Sun, my value comes out with a bias of +50 K. I could write that my measurement minus the bias was drawn from the normal distribution: (my.measurement - 50 K) ~ dnorm(mu = 5777 K, sigma = my.random.error). What I am assuming is that this is equivalent to say that I am instead drawing from a normal distribution with mu = 5827 K (5777 + 50): my.measurement ~ dnorm(mu = 5827 K + my.bias , sigma = my.random.error)
+
+# 3)
+# This is extra. Since the quantities I know how to understand are the sigmas and correlations out of the Covariance Matrix:
+# Convert teff.invCovMat to node.sd and correlations:
+
+teff.CovMat <- inverse( teff.InvCovMat )
+for ( varIdx in 1:K ) {
+node.sd.teff[varIdx] <- sqrt(teff.CovMat[varIdx,varIdx])
+}
+for ( varIdx1 in 1:K ) {
+for ( varIdx2 in 1:K ) {
+teff.Rho[varIdx1,varIdx2] <- ( teff.CovMat[varIdx1,varIdx2] / (node.sd.teff[varIdx1]*node.sd.teff[varIdx2]) )
+}
 }
 
 }"
@@ -380,7 +681,7 @@ logg.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
 
 for (l in 1:K) {       # On number of nodes
     for (m in 1:P) {    # On number of setups
-        for (j in 1:3) { # 3 coefficients needed for fitting a quadratic function
+        for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function
             alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
         }
     }
@@ -403,8 +704,11 @@ for (j in 1:M) {
 #Fitting the true value
 observed.node.logg.per.spec[j,1:K] ~ dmnorm( (true.logg.benchmark.per.spec[j,1:K] + (norm.bias.vector.logg.node[j,1:K]*scale.logg)) , logg.InvCovMat[1:K,1:K] )
 
-#Bias function as a quadratic function of logg    
+#Bias function as a quadratic function of logg  -> ncoeff = 3 coefficients    
 norm.bias.vector.logg.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) 
+
+  #Based on TEFF & LOGG only -> ncoeff = 6 coefficients
+  #norm.bias.vector.logg.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.teff.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.teff.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K]*only.the.true.teff.benchmark[j,1:K]
 
 }
 
@@ -424,6 +728,110 @@ logg.Rho[varIdx1,varIdx2] <- ( logg.CovMat[varIdx1,varIdx2] / (node.sd.logg[varI
 }
 
 }"
+
+########################################
+# LOGG with FEH MODEL FOR BENCHMARKS
+
+model.logg.feh.matrix.bias <- "model{
+# We set up the model to use multivariate normal distributions. For a given spectrum of the benchmarks, the vector of logg measured by the nodes logg.nodes.vector = (logg1, logg2,...,loggn) is a random drawing from a multivariate normal distribution with a mean = vector of true.logg of that benchmark (true.logg, true.teff,...,true.teff) - where obviously the true.teff is the same irrespective of node - and there is a covariance matrix (JAGS expects the inverse covariance matrix actually): teff.nodes.vector ~ dmnorm ( mu = true.teff.vector, InvCovMatrix ). So we need to first set up all vectors accordingly.
+
+# 1)
+# This first part is to define the vector with TRUE values of the benchmark logg
+# We do not use the given logg value directly, but use the given value as a prior for the true value
+
+# Prior on the true logg of the benchmarks
+for (i in 1:N) { # Running over N which is the num.bench
+
+  the.true.logg.bench[i] ~ dnorm(given.logg.benchmarks[i], given.tau.logg.bench[i])  # The given benchmark logg value is a prior on the true value of the star's Teff
+  given.tau.logg.bench[i] <- pow(given.error.logg.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+  
+  the.true.feh.bench[i] ~ dnorm(given.feh.benchmarks[i], given.tau.feh.bench[i])  # The given benchmark feh value is a prior on the true value of the star's Teff
+  given.tau.feh.bench[i] <- pow(given.error.feh.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+}
+
+# Now we will create the vector of true loggs: vector.true.teff = (true.logg, ..., true.logg)
+# Here we have to remember that we use directly true.logg only when the node provided a measurement. If the value was missing, we actually use a broad non-informative prior to simulate that the value of the node measurement was unknown. This means that the actual vector.true.teffs is not one per benchmark, but one per spectrum! Because for each spectrum there is a different number of node values missing.
+
+# true.logg.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
+
+for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
+
+  true.logg.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.logg.bench[code.bench.not.missing[i]]
+  true.feh.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.feh.bench[code.bench.not.missing[i]]
+
+}
+
+#Prior on the missing values
+
+for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
+
+  true.logg.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(0,6)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+  true.feh.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(-3.5,0.5)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+
+}
+
+# Prior on the teff.InvCovMat
+
+logg.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
+
+# Other Priors needed for coefficients
+# Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
+#for (i in 1:2) { # For missing and non-missing values
+for (l in 1:K) {       # On number of nodes
+  for (m in 1:P) {    # On number of setups
+    for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function to 1 parameter
+      alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
+    }
+  }
+}
+#}
+
+# I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
+
+for (i in 1:M) {
+  for (j in 1:K) {
+    only.the.true.logg.benchmark[i,j] <- (given.logg.benchmarks[star.code[i]]-offset.logg)/scale.logg
+    only.the.true.feh.benchmark[i,j] <- (given.feh.benchmarks[star.code[i]]-offset.feh)/scale.feh
+  }
+}
+
+# 2)
+# Now, we finally write that what the nodes give is a noisy measurement of the true.teff.benchmark
+
+#Likelihood - per spectrum (vectorized over K = num.nodes)
+
+for (j in 1:M) {
+  #Fitting the true value
+  observed.node.logg.per.spec[j,1:K] ~ dmnorm( (true.logg.benchmark.per.spec[j,1:K] + (norm.bias.vector.logg.node[j,1:K]*scale.logg)) , logg.InvCovMat[1:K,1:K] )
+  
+  #Based on logg only -> ncoeff = 3 coefficients    
+  #norm.bias.vector.logg.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) 
+  
+  #Based on logg & FEH only -> ncoeff = 6 coefficients
+  norm.bias.vector.logg.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K]*only.the.true.feh.benchmark[j,1:K]
+
+}
+
+# Notice what was done with the bias function above. Let's assume, for example, that I know that everytime I measure the Teff of the Sun, my value comes out with a bias of +50 K. I could write that my measurement minus the bias was drawn from the normal distribution: (my.measurement - 50 K) ~ dnorm(mu = 5777 K, sigma = my.random.error). What I am assuming is that this is equivalent to say that I am instead drawing from a normal distribution with mu = 5827 K (5777 + 50): my.measurement ~ dnorm(mu = 5827 K + my.bias , sigma = my.random.error)
+
+# 3)
+# This is extra. Since the quantities I know how to understand are the sigmas and correlations out of the Covariance Matrix:
+# Convert logg.invCovMat to node.sd and correlations:
+
+logg.CovMat <- inverse( logg.InvCovMat )
+for ( varIdx in 1:K ) {
+  node.sd.logg[varIdx] <- sqrt(logg.CovMat[varIdx,varIdx])
+}
+for ( varIdx1 in 1:K ) {
+  for ( varIdx2 in 1:K ) {
+    logg.Rho[varIdx1,varIdx2] <- ( logg.CovMat[varIdx1,varIdx2] / (node.sd.logg[varIdx1]*node.sd.logg[varIdx2]) )
+  }
+}
+
+}"
+
+
 
 ############################################
 # FEH MODEL FOR BENCHMARKS
@@ -460,7 +868,7 @@ feh.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
 
 for (l in 1:K) {       # On number of nodes
 for (m in 1:P) {    # On number of setups
-for (j in 1:3) { # 3 coefficients needed for fitting a quadratic function
+for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function
 alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
 }
 }
@@ -486,6 +894,9 @@ observed.node.feh.per.spec[j,1:K] ~ dmnorm( (true.feh.benchmark.per.spec[j,1:K] 
 #Bias function as a quadratic function of feh    
 norm.bias.vector.feh.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) 
 
+ #Based on FEH & LOGG only -> ncoeff = 6 coefficients
+  #norm.bias.vector.feh.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K]*only.the.true.logg.benchmark[j,1:K]
+
 }
 
 
@@ -505,10 +916,116 @@ feh.Rho[varIdx1,varIdx2] <- ( feh.CovMat[varIdx1,varIdx2] / (node.sd.feh[varIdx1
 
 }"
 
+########################################
+# FEH with LOGG MODEL FOR BENCHMARKS
+
+model.feh.logg.matrix.bias <- "model{
+# We set up the model to use multivariate normal distributions. For a given spectrum of the benchmarks, the vector of logg measured by the nodes feh.nodes.vector = (feh1, feh2,...,fehn) is a random drawing from a multivariate normal distribution with a mean = vector of true.logg of that benchmark (true.logg, true.teff,...,true.teff) - where obviously the true.teff is the same irrespective of node - and there is a covariance matrix (JAGS expects the inverse covariance matrix actually): teff.nodes.vector ~ dmnorm ( mu = true.teff.vector, InvCovMatrix ). So we need to first set up all vectors accordingly.
+
+# 1)
+# This first part is to define the vector with TRUE values of the benchmark feh
+# We do not use the given feh value directly, but use the given value as a prior for the true value
+
+# Prior on the true feh of the benchmarks
+for (i in 1:N) { # Running over N which is the num.bench
+
+  the.true.feh.bench[i] ~ dnorm(given.feh.benchmarks[i], given.tau.feh.bench[i])  # The given benchmark feh value is a prior on the true value of the star's Teff
+  given.tau.feh.bench[i] <- pow(given.error.feh.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+  
+  the.true.logg.bench[i] ~ dnorm(given.logg.benchmarks[i], given.tau.logg.bench[i])  # The given benchmark logg value is a prior on the true value of the star's Teff
+  given.tau.logg.bench[i] <- pow(given.error.logg.benchmarks[i],-2)                  # dnorm uses the precision, tau, which is the inverse of the variance: tau = 1 / (sigma^2). So, from here we also believe on the error of the Teff value
+
+}
+
+# Now we will create the vector of true loggs: vector.true.teff = (true.logg, ..., true.logg)
+# Here we have to remember that we use directly true.logg only when the node provided a measurement. If the value was missing, we actually use a broad non-informative prior to simulate that the value of the node measurement was unknown. This means that the actual vector.true.teffs is not one per benchmark, but one per spectrum! Because for each spectrum there is a different number of node values missing.
+
+# true.logg.benchmark.per.spec is a matrix with nrow = number of spectrum and ncol = number of nodes, equivalent to the input node.teff matrix
+
+for (i in 1:n.not.missing) { # When the node gave a value (n.not.missing), we include the true.teff of the benchmark estimated above
+
+  true.feh.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.feh.bench[code.bench.not.missing[i]]
+  true.logg.benchmark.per.spec[i.not.missing[i],j.not.missing[i]] <- the.true.logg.bench[code.bench.not.missing[i]]
+
+}
+
+#Prior on the missing values
+
+for (l in 1:n.missing) { # When the node was missing a value (n.missing), we include a value drawn from the broad prior
+
+  true.feh.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(-3.5,0.5)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+  true.logg.benchmark.per.spec[i.of.missing.values[l],j.of.missing.values[l]] ~ dunif(0,6)   #dnorm(5300,pow(800,-2))   #dunif(-1,1)  #dunif(3000,8000)   #dnorm(0,1) #when scaled by meanTbm and sigTbm  #
+
+}
+
+# Prior on the teff.InvCovMat
+
+feh.InvCovMat ~ dwish( prior.matrix[1:K,1:K] , prior.deg.freedom )
+
+# Other Priors needed for coefficients
+# Priors on the coefficients alpha for the fit of the bias function. We fit one bias function per node. The bias.teff is for now a quadratic function of the true.teff
+#for (i in 1:2) { # For missing and non-missing values
+for (l in 1:K) {       # On number of nodes
+  for (m in 1:P) {    # On number of setups
+    for (j in 1:ncoeff) { # 3 coefficients needed for fitting a quadratic function to 1 parameter
+      alpha[j,l,m] ~ dnorm(0,pow(0.1,-2)) # Remember here that dnorm(mu,tau) where mu = mean and tau = 1/sigma^2, and sigma is the standard deviation
+    }
+  }
+}
+#}
+
+# I will eventually need also a vector that really has only the the.true.teff.bench[i], without taking into account the missing values, for the fitting of the bias function (see below)
+
+for (i in 1:M) {
+  for (j in 1:K) {
+    only.the.true.feh.benchmark[i,j] <- (given.feh.benchmarks[star.code[i]]-offset.feh)/scale.feh
+    only.the.true.logg.benchmark[i,j] <- (given.logg.benchmarks[star.code[i]]-offset.logg)/scale.logg
+  }
+}
+
+# 2)
+# Now, we finally write that what the nodes give is a noisy measurement of the true.teff.benchmark
+
+#Likelihood - per spectrum (vectorized over K = num.nodes)
+
+for (j in 1:M) {
+  #Fitting the true value
+  observed.node.feh.per.spec[j,1:K] ~ dmnorm( (true.feh.benchmark.per.spec[j,1:K] + (norm.bias.vector.feh.node[j,1:K]*scale.feh)) , feh.InvCovMat[1:K,1:K] )
+  
+  #Based on logg only -> ncoeff = 3 coefficients    
+  #norm.bias.vector.feh.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) 
+  
+  #Based on logg & FEH only -> ncoeff = 6 coefficients
+  norm.bias.vector.feh.node[j,1:K] <- alpha[1,1:K,setup.code[j]] + alpha[2,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K] + alpha[3,1:K,setup.code[j]]*pow(only.the.true.feh.benchmark[j,1:K],2) + alpha[4,1:K,setup.code[j]]*only.the.true.logg.benchmark[j,1:K] + alpha[5,1:K,setup.code[j]]*pow(only.the.true.logg.benchmark[j,1:K],2) + alpha[6,1:K,setup.code[j]]*only.the.true.feh.benchmark[j,1:K]*only.the.true.logg.benchmark[j,1:K]
+
+}
+
+# Notice what was done with the bias function above. Let's assume, for example, that I know that everytime I measure the Teff of the Sun, my value comes out with a bias of +50 K. I could write that my measurement minus the bias was drawn from the normal distribution: (my.measurement - 50 K) ~ dnorm(mu = 5777 K, sigma = my.random.error). What I am assuming is that this is equivalent to say that I am instead drawing from a normal distribution with mu = 5827 K (5777 + 50): my.measurement ~ dnorm(mu = 5827 K + my.bias , sigma = my.random.error)
+
+# 3)
+# This is extra. Since the quantities I know how to understand are the sigmas and correlations out of the Covariance Matrix:
+# Convert logg.invCovMat to node.sd and correlations:
+
+feh.CovMat <- inverse( feh.InvCovMat )
+for ( varIdx in 1:K ) {
+  node.sd.feh[varIdx] <- sqrt(feh.CovMat[varIdx,varIdx])
+}
+for ( varIdx1 in 1:K ) {
+  for ( varIdx2 in 1:K ) {
+    feh.Rho[varIdx1,varIdx2] <- ( feh.CovMat[varIdx1,varIdx2] / (node.sd.feh[varIdx1]*node.sd.feh[varIdx2]) )
+  }
+}
+
+}"
+
+
+
+
+
 ############################################
 # Initial values for free parameters
 
-create.inits <- function(variable=c('TEFF'),num.chains=num.chains.for.teff,n.setups=num.setups,n.nodes=num.nodes) {
+create.inits.ncoeff <- function(variable=c('TEFF'),num.chains=num.chains.for.teff,n.setups=num.setups,n.nodes=num.nodes,n.coeff=ncoeff) {
   variable <- str_trim(variable)
   if (length(variable) != 1) { stop(paste('Choose one variable at a time from TEFF or LOGG or FEH')) }
   if (!(variable %in% c("TEFF","LOGG","FEH"))) { stop(paste('Variable has to be one of TEFF, LOGG or FEH - and written in uppercase'))}
@@ -518,7 +1035,7 @@ create.inits <- function(variable=c('TEFF'),num.chains=num.chains.for.teff,n.set
   
   list.of.inits <- list()
   for (ik in 1:num.chains) {
-    list.of.inits[[ik]] <-     list(alpha = array(rnorm(3*n.setups*n.nodes,0,0.1),dim=c(3,n.nodes,n.setups)),
+    list.of.inits[[ik]] <-     list(alpha = array(rnorm(n.coeff*n.setups*n.nodes,0,0.1),dim=c(n.coeff,n.nodes,n.setups)),
                                     InvCovMat = diag(rgamma(n.nodes,0.1,0.1)),
                                     .RNG.name="base::Super-Duper", 
                                     .RNG.seed=((2*ik)+1))
@@ -831,11 +1348,181 @@ look.at.node.bias.functions <- function(the.model,variable=c('TEFF'),bench.data=
   
 }
 
+############################################
+# Function to plot the node biases
+
+look.at.node.bias.multifunctions <- function(the.model,variable=c('TEFF'),variable2=c('LOGG'),bench.data=bench.param,observed.data=observed.node.teff.spectrum,
+                                        observed.data2=observed.node.logg.spectrum,n.coeff=ncoeff,     
+                                        the.setups=vector.of.setups,the.stars=star.code,col.of.setups=metadata.of.bench.spectra$SETUP,
+                                        nodes=list.nodes,mean.param.bench,sd.param.bench,mean.param2.bench,sd.param2.bench,
+                                        observed.snr=snr.spec.vec) {
+  variable <- str_trim(variable)
+  if (length(variable) != 1) { stop(paste('Choose one variable at a time from TEFF or LOGG or FEH')) }
+  if (!(variable %in% c("TEFF","LOGG","FEH"))) { stop(paste('Variable has to be one of TEFF, LOGG or FEH - and written in uppercase'))}
+  
+  this.bench.col <- which(colnames(bench.data) == variable)
+  this.bench.col2 <- which(colnames(bench.data) == variable2)
+  list.of.setups <- levels(as.factor(col.of.setups))
+  
+  coef.alphas <- summary(the.model,vars=c('alpha'))[,4]   #Median
+  coef.alphas.1 <- summary(the.model,vars=c('alpha'))[,1]  #5th percentile
+  coef.alphas.3 <- summary(the.model,vars=c('alpha'))[,3]  #9th percentile
+
+  for (each.node in nodes) {
+    num.of.node <- which(nodes == each.node)
+    for (each.setup in list.of.setups) {
+      num.setup <- which(list.of.setups == each.setup)
+      print(each.node)
+      print(each.setup)
+      
+      #Reference values in two parameters
+      plot.x <- bench.data[the.stars[the.setups == num.setup],this.bench.col]
+      plot.x2 <- bench.data[the.stars[the.setups == num.setup],this.bench.col2]
+      
+      #Delta of observed and reference
+      plot.y <- (observed.data[(the.setups == num.setup),num.of.node]-plot.x)
+      #str(plot.s)
+      
+      #SNR vector
+      plot.s <- observed.snr[(the.setups == num.setup),num.of.node]
+      #str(plot.y)
+      
+      #Parmeter vectors
+      plot.t <- bench.data[the.stars[the.setups == num.setup],'TEFF']
+      plot.l <- bench.data[the.stars[the.setups == num.setup],'LOGG']
+      plot.f <- bench.data[the.stars[the.setups == num.setup],'FEH']
+      
+      if (sum(is.na(plot.y)) == length(plot.y)) { 
+        plot.x <- c(-5,5)
+        plot.y <- plot.x
+      }
+      
+      
+      par(mfrow=c(2,2))
+      
+      #X
+      #plot(plot.x,plot.y,pch = 16,col = rgb(0,0,0,0.5),
+      #     main=paste0(each.node,' - ',each.setup),xlab=paste0('Given ',variable,' of Reference Stars (per spectrum)'),
+      #     ylab=paste0('Delta ',variable,' Observed - Given'))
+      
+      #Scaled main parameter
+      x <- plot.x
+      order.x <- order(x)
+      x <- x[order.x]
+      nor.x <- (x-mean.param.bench)/sd.param.bench
+      
+      #Scaled second parameter in order of main parameter
+      x2 <- plot.x2
+      x2 <- x2[order.x]
+      nor.x2 <- (x2-mean.param2.bench)/sd.param2.bench
+      
+      #print(plot.x[order.x])
+      #print(plot.y[order.x])
+      
+      if (n.coeff == 3){
+        print('here3')
+        k1 <- ((n.coeff*num.of.node)-2)+((num.setup-1)*(length(nodes)*n.coeff))
+        k2 <- ((n.coeff*num.of.node)-1)+((num.setup-1)*(length(nodes)*n.coeff))
+        k3 <- ((n.coeff*num.of.node))+((num.setup-1)*(length(nodes)*n.coeff))
+        
+        nor.y <- coef.alphas[k1]+coef.alphas[k2]*nor.x+coef.alphas[k3]*nor.x^2
+        y <- nor.y*sd.param.bench
+        #lines(x,y,col='red',lwd=3)
+        
+        y.1 <- sd.param.bench*(coef.alphas.1[k1]+coef.alphas.1[k2]*nor.x+coef.alphas.1[k3]*nor.x^2)
+        #lines(x,y.1,col='blue',lwd=3) 
+        
+        y.3 <- sd.param.bench*(coef.alphas.3[k1]+coef.alphas.3[k2]*nor.x+coef.alphas.3[k3]*nor.x^2)
+        #lines(x,y.3,col='blue',lwd=3)
+      }else if (n.coeff == 6){
+        print('here6')
+        k1 <- ((n.coeff*num.of.node)-5)+((num.setup-1)*(length(nodes)*n.coeff))
+        k2 <- ((n.coeff*num.of.node)-4)+((num.setup-1)*(length(nodes)*n.coeff))
+        k3 <- ((n.coeff*num.of.node)-3)+((num.setup-1)*(length(nodes)*n.coeff))
+        k4 <- ((n.coeff*num.of.node)-2)+((num.setup-1)*(length(nodes)*n.coeff))
+        k5 <- ((n.coeff*num.of.node)-1)+((num.setup-1)*(length(nodes)*n.coeff))
+        k6 <- ((n.coeff*num.of.node)-0)+((num.setup-1)*(length(nodes)*n.coeff))
+        
+        nor.y <- coef.alphas[k1]+coef.alphas[k2]*nor.x+coef.alphas[k3]*nor.x^2+coef.alphas[k4]*nor.x2+coef.alphas[k5]*nor.x2^2+coef.alphas[k6]*nor.x*nor.x2
+
+        y <- nor.y*sd.param.bench
+        #lines(x,y,col='red',lwd=3)
+        
+        y.1 <- sd.param.bench*(coef.alphas.1[k1]+coef.alphas.1[k2]*nor.x+coef.alphas.1[k3]*nor.x^2+coef.alphas.1[k4]*nor.x2+coef.alphas.1[k5]*nor.x2^2+coef.alphas.1[k6]*nor.x*nor.x2)
+        #lines(x,y.1,col='blue',lwd=3) 
+        
+        y.3 <- sd.param.bench*(coef.alphas.3[k1]+coef.alphas.3[k2]*nor.x+coef.alphas.3[k3]*nor.x^2+coef.alphas.3[k4]*nor.x2+coef.alphas.3[k5]*nor.x2^2+coef.alphas.3[k6]*nor.x*nor.x2)
+        #lines(x,y.3,col='blue',lwd=3)
+      }
+      
+      #print(paste('node = ',each.node,' setup = ',each.setup,' k1, k2, k3 =',k1,k2,k3,sep=" "))
+      #print(coef.alphas)
+      #stop()
+      
+      #TEFF
+      print('teff')
+      #str(plot.t)
+      #print(length(plot.t))
+      #print(length(plot.y))
+      plot.tx = plot.t[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
+      order.t <- order(plot.tx)  #Puts LOGG of order x, into LOGG order.
+      plot(plot.t,plot.y,pch = 16,col = rgb(0,0,0,0.25),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given TEFF of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      lines(plot.tx[order.t],y[order.t],col='red',lwd=3)
+      #lines(plot.tx[order.t],y.1[order.t],col='blue',lwd=3)
+      #lines(plot.tx[order.t],y.3[order.t],col='blue',lwd=3)
+      #points(plot.t,plot.y,pch = 16,col = rgb(0,0,0,0.25))
+      
+      
+      #LOGG
+      print('logg')
+      plot.lx = plot.l[order.x]  #Puts LOGG in the same order as y (i.e. as x, the independent variable the bias is calculated on)
+      order.l <- order(plot.lx)  #Puts LOGG of order x, into LOGG order.
+      plot(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given LOGG of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      lines(plot.lx[order.l],y[order.l],col='red',lwd=3)
+      #lines(plot.lx[order.l],y.1[order.l],col='blue',lwd=3)
+      #lines(plot.lx[order.l],y.3[order.l],col='blue',lwd=3)
+      #points(plot.l,plot.y,pch = 16,col = rgb(0,0,0,0.25))
+      
+      #FEH
+      print('feh')
+      plot.fx = plot.f[order.x]
+      order.f <- order(plot.fx)
+      plot(plot.f,plot.y,pch = 16,col = rgb(0,0,0,0.5),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Given FEH of Benchmarks (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      
+      lines(plot.fx[order.f],y[order.f],col='red',lwd=3)
+      #lines(plot.fx[order.f],y.1[order.f],col='blue',lwd=3)
+      #lines(plot.fx[order.f],y.3[order.f],col='blue',lwd=3)
+      
+      #SNR
+      plot(plot.s,plot.y,pch = 16,col = rgb(0,0,0,0.5),
+           main=paste0(each.node,' - ',each.setup),xlab=paste0('Measured SNR (per spectrum)'),
+           ylab=paste0('Delta ',variable,' Observed - Bench'))
+      
+      #plot.tx = plot.t[order.x]
+      #order.t <- order(plot.tx)
+      #lines(plot.tx[order.t],y[order.t],col='red',lwd=3)
+      #lines(plot.tx[order.t],y.1[order.t],col='blue',lwd=3) 
+      #lines(plot.tx[order.t],y.3[order.t],col='blue',lwd=3)
+      
+      par(mfrow=c(1,1))
+      
+    }
+  }
+  
+}
+
+
 
 ############################################
 # NOW TO PREPARE THE HOMOGENISATION OF THE WHOLE SAMPLE
 
-prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metadata=nodes.ids,all.param=clean.nodes.param,bench.data=bench.param) {
+prepare.for.full.sample.homog.mparam <- function(variable='TEFF',variable2='FEH',this.model,full.metadata=nodes.ids,all.param=clean.nodes.param,bench.data=bench.param,n.coeff=ncoeff) {
   # Will order the stars by CNAME 
   ii <- order(full.metadata$CNAME) 
   my.selec.ids <- full.metadata[ii,]
@@ -847,7 +1534,8 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
   my.selec.gestype <- vector('character')
   my.selec.setup <- vector('character')
   my.selec.vel <- vector('numeric')
-  
+  print(length(my.selec.cnames))
+
   for (i in 1:length(my.selec.cnames)) {
     my.selec.gesfld[i] <- as.character(levels(as.factor(my.selec.ids$GES_FLD[which(my.selec.ids$CNAME == my.selec.cnames[i])])))
     my.selec.setup[i] <- paste(as.character(levels(as.factor(my.selec.ids$SETUP[which(my.selec.ids$CNAME == my.selec.cnames[i])]))),collapse="|")
@@ -867,7 +1555,8 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
   num.setups <- length(setups.used)
   
   full.sample.param <- matrix(NA,ncol=dim(my.selec.param)[2],nrow=dim(my.selec.param)[1])
-
+  full.sample.param2 <- matrix(NA,ncol=dim(my.selec.param)[2],nrow=dim(my.selec.param)[1])
+  
   spectrum.not.missing <- vector("numeric")
   node.not.missing <- vector("numeric")
   spectrum.missing <- vector("numeric")
@@ -885,20 +1574,37 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
     round.to.this <- 2
   }
   
+  num.col2 <- which(dimnames(my.selec.param)[[3]] == variable2)
+  if (variable2 == 'TEFF') {
+    round.to.this2 <- 0
+  } else {
+    round.to.this2 <- 2
+  }
+  
   for (j in 1:tot.num.spectra) {
     for (i in 1:num.nodes) {
       full.sample.param[j,i] <- round(as.numeric(my.selec.param[j,i,num.col]),digits=round.to.this)
+      full.sample.param2[j,i] <- round(as.numeric(my.selec.param[j,i,num.col2]),digits=round.to.this2)
       if (is.na(full.sample.param[j,i])) {
         tot.missing <- tot.missing + 1
         full.sample.param[j,i] <- 10
+        full.sample.param2[j,i] <- 10
         spectrum.missing[tot.missing] <- j
         node.missing[tot.missing] <- i
       } else {
-        tot.num.not.missing <- tot.num.not.missing+1
-        spectrum.not.missing[tot.num.not.missing] <- j
-        node.not.missing[tot.num.not.missing] <- i
-        star.code.not.missing[tot.num.not.missing] <- which(my.selec.cnames == as.character(my.selec.ids$CNAME[j]))
-        setup.not.missing[tot.num.not.missing] <- which(setups.used == my.selec.ids$SETUP[j])
+        if (is.na(full.sample.param2[j,i])) {
+          tot.missing <- tot.missing + 1
+          full.sample.param[j,i] <- 10
+          full.sample.param2[j,i] <- 10
+          spectrum.missing[tot.missing] <- j
+          node.missing[tot.missing] <- i
+        } else {    
+          tot.num.not.missing <- tot.num.not.missing+1
+          spectrum.not.missing[tot.num.not.missing] <- j
+          node.not.missing[tot.num.not.missing] <- i
+          star.code.not.missing[tot.num.not.missing] <- which(my.selec.cnames == as.character(my.selec.ids$CNAME[j]))
+          setup.not.missing[tot.num.not.missing] <- which(setups.used == my.selec.ids$SETUP[j])
+        }
       }
     }
   }
@@ -915,20 +1621,40 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
   mean.biases <- matrix(0,ncol=ncol(full.sample.param),nrow=nrow(full.sample.param))
   sd.biases <- matrix(0,ncol=ncol(full.sample.param),nrow=nrow(full.sample.param))
   renorm.full.sample.param <- matrix(10,ncol=ncol(full.sample.param),nrow=nrow(full.sample.param))
+  renorm.full.sample.param2 <- matrix(10,ncol=ncol(full.sample.param2),nrow=nrow(full.sample.param2))
   
   col.in.bench <- which(colnames(bench.data) == variable)
   mean.bench.param <- mean(bench.data[,col.in.bench],na.rm=T)
   sd.bench.param <- sd(bench.data[,col.in.bench],na.rm=T)
+
+  col2.in.bench <- which(colnames(bench.data) == variable2)
+  mean.bench.param2 <- mean(bench.data[,col2.in.bench],na.rm=T)
+  sd.bench.param2 <- sd(bench.data[,col2.in.bench],na.rm=T)
   
   for (j in 1:tot.num.not.missing) {
+
     alpha1 <- rnorm(1000,mean.alpha[1,node.not.missing[j],setup.not.missing[j]],sd.alpha[1,node.not.missing[j],setup.not.missing[j]])
     alpha2 <- rnorm(1000,mean.alpha[2,node.not.missing[j],setup.not.missing[j]],sd.alpha[2,node.not.missing[j],setup.not.missing[j]])
     alpha3 <- rnorm(1000,mean.alpha[3,node.not.missing[j],setup.not.missing[j]],sd.alpha[3,node.not.missing[j],setup.not.missing[j]])
-    
+    alpha4 <- rnorm(1000,mean.alpha[1,node.not.missing[j],setup.not.missing[j]],sd.alpha[1,node.not.missing[j],setup.not.missing[j]])
+    alpha5 <- rnorm(1000,mean.alpha[2,node.not.missing[j],setup.not.missing[j]],sd.alpha[2,node.not.missing[j],setup.not.missing[j]])
+    alpha6 <- rnorm(1000,mean.alpha[3,node.not.missing[j],setup.not.missing[j]],sd.alpha[3,node.not.missing[j],setup.not.missing[j]])
+
     renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]] <- (full.sample.param[spectrum.not.missing[j],node.not.missing[j]]-mean.bench.param)/sd.bench.param
-    bias.param <- alpha1 + alpha2 * renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]] + alpha3 * ((renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]])^2)
+    renorm.full.sample.param2[spectrum.not.missing[j],node.not.missing[j]] <- (full.sample.param2[spectrum.not.missing[j],node.not.missing[j]]-mean.bench.param2)/sd.bench.param2
+      
+    bias.param <- alpha1 + alpha2 * renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]] + alpha3 * ((renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]])^2) + alpha4 * renorm.full.sample.param2[spectrum.not.missing[j],node.not.missing[j]] + alpha5 * ((renorm.full.sample.param2[spectrum.not.missing[j],node.not.missing[j]])^2) + alpha6 * renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]] * renorm.full.sample.param2[spectrum.not.missing[j],node.not.missing[j]]
+
     mean.biases[spectrum.not.missing[j],node.not.missing[j]] <- round(mean(bias.param*sd.bench.param),digits=round.to.this)
     sd.biases[spectrum.not.missing[j],node.not.missing[j]]   <- round(sd(bias.param*sd.bench.param),digits=round.to.this)
+
+    #print(full.sample.param[spectrum.not.missing[j],node.not.missing[j]])
+    #print(full.sample.param2[spectrum.not.missing[j],node.not.missing[j]])
+    #print(renorm.full.sample.param[spectrum.not.missing[j],node.not.missing[j]])
+    #print(renorm.full.sample.param2[spectrum.not.missing[j],node.not.missing[j]])
+    #print(bias.param)
+    #print(sd.bench.param)
+    #print(sd.biases[spectrum.not.missing[j],node.not.missing[j]])
     if (sd.biases[spectrum.not.missing[j],node.not.missing[j]] == 0) {
       #print(sd(bias.param*sd.bench.param)) - not rounded
       #print(sd.biases[spectrum.not.missing[j],node.not.missing[j]]) - rounded
@@ -936,6 +1662,8 @@ prepare.for.full.sample.homog <- function(variable='TEFF',this.model,full.metada
     }
   }
  
+  print(tot.num.stars)
+  
   all.data <- list(full.sample.param,tot.num.stars,tot.num.spectra,star.code.not.missing,spectrum.not.missing,node.not.missing,tot.num.not.missing,
                    tot.missing,spectrum.missing,node.missing,mean.biases,sd.biases,mean.node.sd,mean.Rho,
                    my.selec.cnames,my.selec.gesfld,my.selec.gestype,my.selec.setup,my.selec.vel)
@@ -949,7 +1677,7 @@ homog.all.teff <- "model{
 
 # For each star there is one true.teff that I do not know so I start with a uniform prior - star in the sense of individual CNAME
 for (i in 1:N) { # for each individual CNAME
-true.teff[i] ~ dunif(3000,8000)
+  true.teff[i] ~ dunif(3000,8000)
 }
 
 # In my formulation of bias, the node does not sample from a distribution centered in true.teff, but one centered in true.teff + bias.teff
@@ -1181,6 +1909,10 @@ create.data.table <- function(homog.teff=full.teff.homog,homog.logg=full.logg.ho
   mean.homog.feh <- apply(fit_feh,2,mean)
   sd.homog.feh <- apply(fit_feh,2,sd)
   
+  print(str(mean.homog.teff))
+  print(str(mean.homog.logg))
+  print(str(mean.homog.feh))
+  print(str(metadata.here[[15]]))
   data.homog <- as.data.frame(cbind(metadata.here[[15]],metadata.here[[16]],metadata.here[[17]],metadata.here[[18]],metadata.here[[19]],mean.homog.teff,
                                   sd.homog.teff,mean.homog.logg,sd.homog.logg,mean.homog.feh,sd.homog.feh))
   

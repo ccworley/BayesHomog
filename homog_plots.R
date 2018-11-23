@@ -67,7 +67,7 @@ load.nodes <- function(list.nodes,release=this.release,where.files=node.files.pa
     ii.order <- order(node.filenames)
     for (jk in seq(1,length(list.param.names),1)) {
       param.col <- which(node.to.extract$colNames == list.param.names[jk])
-      if (((list.nodes[ik] == 'Nice') || (list.nodes[ik] == 'IAC')) && ((list.param.names[jk] == 'FEH') || (list.param.names[jk] == 'E_FEH'))) {
+      if (((list.nodes[ik] == 'IACb') || (list.nodes[ik] == 'IAC')) && ((list.param.names[jk] == 'FEH') || (list.param.names[jk] == 'E_FEH'))) {
         param.col <- which(node.to.extract$colNames == alt.list.names[jk])
       }
       if ((list.nodes[ik] == 'MyGIsFOS') && (list.param.names[jk] == 'FEH')) {
@@ -424,15 +424,72 @@ correct.iacmp.grid <- function(in.nodes.param) {
   selec.col <- as.data.frame(selec.col)
   selec.col <- apply(selec.col,2,as.numeric)
   #    
-  filter.col3 <- !is.na(selec.col) & ((selec.col <= -2.30) | (selec.col >= 0.6))
-  
+  filter.col3 <- !is.na(selec.col) & ((selec.col <= -2.52) | (selec.col >= 0.6))
+    #
   #
-  final.filter <- filter.col1 | filter.col2 | filter.col3
+  selec.colt <- in.nodes.param[,col.maxplanck,col.teff]
+  selec.colt <- as.data.frame(selec.colt)
+  selec.colt <- apply(selec.colt,2,as.numeric)
+  selec.coll <- in.nodes.param[,col.maxplanck,col.logg]
+  selec.coll <- as.data.frame(selec.coll)
+  selec.coll <- apply(selec.coll,2,as.numeric)
+  
+  filter.col4 <- !is.na(selec.colt) & !is.na(selec.coll) & selec.colt <= 4350 & selec.coll <= 4.0  & selec.coll >= 2.7
+  #print(sum(filter.col4))
+  #
+  final.filter <- filter.col1 | filter.col2 | filter.col3 | filter.col4
+  #print(sum(filter.col1 | filter.col2 | filter.col3))
+  #print(sum(final.filter))
   #
   for (each.param in dimnames(in.nodes.param)[[3]]) {
     col.param <- which(dimnames(in.nodes.param)[[3]] == each.param)
     in.nodes.param[final.filter,col.maxplanck,each.param] <- "NaN"
   }
+  
+  #Max Planckb
+  col.maxplanck <- which(dimnames(in.nodes.param)[[2]] == "MaxPlanckb")
+  col.teff <- which(dimnames(in.nodes.param)[[3]] == "TEFF")
+  col.logg <- which(dimnames(in.nodes.param)[[3]] == "LOGG")
+  col.feh <- which(dimnames(in.nodes.param)[[3]] == "FEH")
+  
+  selec.col <- in.nodes.param[,col.maxplanck,col.teff]
+  selec.col <- as.data.frame(selec.col)
+  selec.col <- apply(selec.col,2,as.numeric)
+  #
+  filter.col1 <- !is.na(selec.col) & ((selec.col >= 6950) | (selec.col <= 4000))
+  #
+  selec.col <- in.nodes.param[,col.maxplanck,col.logg]
+  selec.col <- as.data.frame(selec.col)
+  selec.col <- apply(selec.col,2,as.numeric)
+  #    
+  filter.col2 <- !is.na(selec.col) & ((selec.col <= 1.0) | (selec.col >= 4.90))
+  #
+  selec.col <- in.nodes.param[,col.maxplanck,col.feh]
+  selec.col <- as.data.frame(selec.col)
+  selec.col <- apply(selec.col,2,as.numeric)
+  #    
+  filter.col3 <- !is.na(selec.col) & ((selec.col <= -2.52) | (selec.col >= 0.6))
+  
+  #
+  selec.colt <- in.nodes.param[,col.maxplanck,col.teff]
+  selec.colt <- as.data.frame(selec.colt)
+  selec.colt <- apply(selec.colt,2,as.numeric)
+  selec.coll <- in.nodes.param[,col.maxplanck,col.logg]
+  selec.coll <- as.data.frame(selec.coll)
+  selec.coll <- apply(selec.coll,2,as.numeric)
+  
+  filter.col4 <- !is.na(selec.colt) & !is.na(selec.coll) & selec.colt <= 4350 & selec.coll <= 4.0  & selec.coll >= 2.7
+  #print(sum(filter.col4))
+  #
+  final.filter <- filter.col1 | filter.col2 | filter.col3 | filter.col4
+  #print(sum(filter.col1 | filter.col2 | filter.col3))
+  #print(sum(final.filter))
+  #
+  for (each.param in dimnames(in.nodes.param)[[3]]) {
+    col.param <- which(dimnames(in.nodes.param)[[3]] == each.param)
+    in.nodes.param[final.filter,col.maxplanck,each.param] <- "NaN"
+  }
+  
   return(in.nodes.param)
 }
 
@@ -500,7 +557,7 @@ apply.filter.outliers <- function(in.nodes.param,filter.outliers) {
 
 find.outliers.accepted <- function(in.nodes.param,metadata.nodes.param,in.bench.param) {
   list.param <- c('TEFF','LOGG','FEH')
-  limits.param <- c(500,50,50)
+  limits.param <- c(50000,50,50)
   final.filter <- array(FALSE,c(dim(in.nodes.param)[1],dim(in.nodes.param)[2],3))
   for (each.param in list.param) {
     param.col <- which(dimnames(in.nodes.param[,,])[[3]] == each.param)

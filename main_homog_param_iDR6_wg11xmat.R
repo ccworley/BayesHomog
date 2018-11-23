@@ -17,7 +17,7 @@ release <- c('iDR6')
 list.nodes <- c('Lumba','EPINARBO','IAC','OACT','MaxPlanck','IACb','MaxPlanckb')
 node.template.file <- c('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/FITSFiles/iDR6/FITSFiles/NodeTemplate/GES_iDR6_WG10_NodeTemplate_14062018_plus2ndExt.fits')
 node.files.path <- c('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/FITSFiles/iDR6/FITSFiles/')
-
+suff = '_CRT'
 # Source the file with definitions of functions for plots and other tasks
 source('homog_plots.R')
 
@@ -41,7 +41,7 @@ nodes.ids <- nodes.ids.all
 
 
 # Restrict to one setup for the moment
-anasetup = "HR15N"       #"HR10|HR21"    #"HR9B"
+anasetup = "HR10|HR21"    #"HR9B"  "HR15N"       #
 if ("HR15N" %in% anasetup) {
   list.nodes <- c('Lumba','OACT','EPINARBO','MaxPlanck')
 } else if ("HR9B" %in% anasetup) {
@@ -158,7 +158,9 @@ clean.nodes.param <- apply.filter.outliers(correc.nodes.param,filter.outliers)
 # Read the Benchmarks and the reference parameters
 bench.path <- paste('/Users/charlotteworley/Documents/GES/WG10/iDR6ParameterHomog/Inputs/')
 #file.bench <- paste('GES_iDR6_FGKMCoolWarm_Benchmarks_AcceptedParams_11092018.fits')
-file.bench <- paste('GES_WG11xmatch_HR15N.fits')
+#file.bench <- paste('GES_WG11xmatch_HR15N.fits')
+file.bench <- paste('GES_WG11xmatch_',anasetup,suff,'.fits',sep="")
+print(file.bench)
 columns.to.read <- c('GES_FLD','GES_TYPE','ID1','TEFF','E_TEFF','LOGG','E_LOGG','FEH','SIG1_MH0','SIG2_MH0','DELTA_ION','DELTA_LTE','XI') # Need the real errors of [Fe/H]; in the meantime using will be using the sqrt(delta_ion^2 + delta_lte^2)
 
 # Load the parameters of the benchmark stars
